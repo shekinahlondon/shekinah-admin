@@ -30,6 +30,13 @@
   .stat { background: var(--white); border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
   .stat .v { font-family: "Fraunces", Georgia, serif; font-weight: 500; font-size: 2.3rem; line-height: 1; color: var(--forest); }
   .stat .l { color: var(--muted); font-size: .84rem; margin-top: 8px; }
+  .fuhome { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--white); border: 1px solid var(--line); border-left: 4px solid var(--brand-gold); border-radius: 14px; padding: 14px 16px; margin-bottom: 14px; }
+  .furow { border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-top: 10px; background: var(--white); transition: opacity .2s; }
+  .furow.fudone { opacity: .6; background: var(--line-soft); }
+  .fuwho { display: flex; gap: 12px; align-items: center; }
+  .fumsg { margin: 10px 0; padding: 10px 12px; background: #F7F5F0; border-radius: 10px; font-size: .88rem; color: var(--ink); white-space: pre-wrap; }
+  .fuact { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .linkbtn { background: none; border: 0; padding: 0; color: var(--forest); text-decoration: underline; cursor: pointer; font: 600 .86rem "Plus Jakarta Sans", sans-serif; }
   .brk { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; font-size: .76rem; color: var(--ink); }
   .brk span { background: var(--line-soft); border-radius: 999px; padding: 2px 8px; }
   .followcard { border-color: #F3D7A0; }
@@ -117,6 +124,7 @@
     <!-- HOME -->
     <section data-tab="home">
       <div id="bdayBanner"></div>
+      <div class="fuhome" id="fuHome" hidden></div>
       <div class="grid4" id="stats"></div>
       <div class="card followcard" id="followCard" hidden><h3>Asked us to get in touch <span class="countpill" id="followCount"></span></h3><div class="scroll" id="followList"></div></div>
       <div class="two">
@@ -167,6 +175,26 @@
       </div>
     </section>
 
+    <!-- FOLLOW-UP -->
+    <section data-tab="followup" class="hidden">
+      <div class="toolbar">
+        <label for="fuDate" style="margin:0">Sunday</label>
+        <input id="fuDate" type="date" style="flex:0 1 200px">
+        <span class="muted" style="font-size:.86rem" id="fuInfo"></span>
+      </div>
+      <div class="card">
+        <h3>First-timers to welcome <span class="countpill" id="fuWelcomeCount">0</span></h3>
+        <p class="muted" style="margin:0 0 10px;font-size:.88rem">People whose first visit was this Sunday.</p>
+        <div id="fuWelcome"></div>
+      </div>
+      <div class="card">
+        <h3>We missed you <span class="countpill" id="fuMissedCount">0</span></h3>
+        <p class="muted" style="margin:0 0 10px;font-size:.88rem" id="fuMissedNote"></p>
+        <div id="fuMissed"></div>
+      </div>
+      <p class="muted" style="font-size:.84rem">Tap <b>Send on WhatsApp</b> on your phone. WhatsApp opens with the message ready, and the person is marked as contacted. Edit the wording in <b>Settings</b>.</p>
+    </section>
+
     <!-- SETTINGS -->
     <section data-tab="settings" class="hidden">
       <div class="card">
@@ -183,6 +211,17 @@
         <input id="alertEmails">
         <p class="muted" style="font-size:.85rem">The birthday digest goes out every morning around 8am. Note: until a domain is verified in Resend, emails only reach the Resend account owner's address.</p>
         <button class="btn small" id="saveAlerts">Save</button> <span id="alertMsg"></span>
+      </div>
+      <div class="card">
+        <h3>Follow-up messages</h3>
+        <p class="muted" style="font-size:.86rem;margin-top:0">{name} becomes the person's first name.</p>
+        <label for="fuWelcomeText">Welcome message for first-timers</label>
+        <textarea id="fuWelcomeText"></textarea>
+        <label for="fuMissedText">"We missed you" message</label>
+        <textarea id="fuMissedText"></textarea>
+        <label for="fuAfter">Show someone in "We missed you" after they miss</label>
+        <select id="fuAfter" style="max-width:260px"><option value="1">1 Sunday</option><option value="2">2 Sundays in a row</option><option value="3">3 Sundays in a row</option><option value="4">4 Sundays in a row</option></select>
+        <p style="margin-top:12px"><button class="btn small" id="saveFu">Save</button> <span id="fuSaveMsg"></span></p>
       </div>
       <div class="card">
         <h3>Birthday card & messages</h3>
@@ -256,7 +295,7 @@ function csv(name, rows) {
 }
 const qrUrl = (text) => { const q = qrcode(0, "M"); q.addData(text); q.make(); return q.createDataURL(8, 2); };
 
-let role = null, me = null, members = [], teams = [], attendance = [], photoUrls = {}, settings = {};
+let role = null, me = null, members = [], teams = [], attendance = [], followups = [], photoUrls = {}, settings = {};
 
 // ===== AUTH =====
 $("#lf").addEventListener("submit", async (e) => {
@@ -275,7 +314,7 @@ async function boot() {
   role = r; me = session.user;
   $("#loginView").classList.add("hidden"); $("#appView").classList.remove("hidden");
   $("#whoName").textContent = `${me.email} · ${role}`;
-  const tabs = role === "admin" ? [["home", "Home"], ["scan", "Scan"], ["members", "Members"], ["attendance", "Attendance"], ["settings", "Settings"]] : [["scan", "Scan"]];
+  const tabs = role === "admin" ? [["home", "Home"], ["scan", "Scan"], ["members", "Members"], ["attendance", "Attendance"], ["followup", "Follow-up"], ["settings", "Settings"]] : [["scan", "Scan"]];
   $("#tabs").innerHTML = tabs.map(([k, l]) => `<button data-k="${k}">${l}</button>`).join("");
   $("#tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) go(b.dataset.k); };
   if (role === "admin") {
@@ -293,18 +332,19 @@ function go(k) {
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.k === k));
   history.replaceState(null, "", "#" + k);
   if (k !== "scan") stopCam();
-  ({ home: renderHome, members: renderMembers, attendance: renderAttendance, settings: renderSettings }[k] || (() => {}))();
+  ({ home: renderHome, members: renderMembers, attendance: renderAttendance, followup: renderFollowup, settings: renderSettings }[k] || (() => {}))();
 }
 
 async function loadAll() {
   const since = addDays(ldn(), -400);
-  const [m, t, a, s] = await Promise.all([
+  const [m, t, a, s, f] = await Promise.all([
     sb.from("members").select("*").order("created_at", { ascending: false }),
     sb.from("teams").select("*").order("sort_order"),
     sb.from("attendance").select("member_id,service_date,checked_in_at,method").gte("service_date", since).order("checked_in_at"),
     sb.from("settings").select("*"),
+    sb.from("followups").select("member_id,kind,service_date,status,sent_at").gte("sent_at", since),
   ]);
-  members = m.data || []; teams = t.data || []; attendance = a.data || [];
+  members = m.data || []; teams = t.data || []; attendance = a.data || []; followups = f.data || [];
   settings = Object.fromEntries((s.data || []).map((r) => [r.key, r.value]));
   const paths = members.map((x) => x.photo_path).filter((p) => p && !photoUrls[p]);
   for (let i = 0; i < paths.length; i += 100) {
@@ -367,6 +407,10 @@ async function renderHome() {
   $("#followList").innerHTML = follow.length ? `<table class="tbl">${follow.map((m) => `<tr><td>${av(m)}</td><td class="click-cell" data-open="${m.id}"><b>${esc(m.first_name)} ${esc(m.last_name)}</b><div class="muted" style="font-size:.8rem">Asked ${nice(m.created_at.slice(0, 10))}</div></td>
     <td>${m.phone ? `<a href="tel:${esc(m.phone)}">${esc(m.phone)}</a>` : ""}${m.phone && m.email ? "<br>" : ""}${m.email ? `<a href="mailto:${esc(m.email)}">${esc(m.email)}</a>` : ""}</td>
     <td style="text-align:right"><button class="btn ghost small" data-followed="${m.id}">Mark as done</button></td></tr>`).join("")}</table>` : "";
+  const fl = followupLists(serviceDates(ldn())[0] || sd);
+  const fuTotal = fl.welcome.length + fl.missed.length;
+  $("#fuHome").hidden = !fuTotal;
+  $("#fuHome").innerHTML = fuTotal ? `<div><b>This week's follow-ups</b><div class="muted" style="font-size:.86rem">${fl.welcome.length} first-timer${fl.welcome.length === 1 ? "" : "s"} to welcome · ${fl.missed.length} to check in with</div></div><button class="btn small" onclick="go('followup')">Open follow-up list</button>` : "";
   $("#stats").innerHTML = [
     [active.length, "People on record"],
     [members.filter((m) => m.status === "member").length, "Members"],
@@ -403,6 +447,86 @@ $("#csvMembers").onclick = () => csv(`snl-members-${ldn()}.csv`, [["First name",
   ...filtered().map((m) => [m.first_name, m.last_name, m.email, m.phone, SNL.dobText(m.date_of_birth), m.address, m.postcode, teamName(m.team_id), m.status, m.wants_membership ? "Yes" : "No", m.join_community ? "Yes" : "No", m.wants_followup ? (m.followed_up_at ? "Done " + m.followed_up_at.slice(0, 10) : "Yes") : "No", m.updates_consent ? "Yes" : "No", m.how_heard, m.created_at.slice(0, 10), lastSeen(m.id), m.member_code])]);
 
 // ===== FOLLOW-UP =====
+const DEFAULT_WELCOME = "Hi {name}, it was so lovely to have you with us at Shekinah Nation London on Sunday! We'd love to see you again. If there's anything you'd like to know about us, or anything we can pray with you about, just reply here. God bless you 💛";
+const DEFAULT_MISSED = "Hi {name}, we missed you at church on Sunday! We hope you and your family are well. Is there anything we can pray with you about this week? We'd love to see you soon 💛 Shekinah Nation London";
+$("#fuDate").addEventListener("change", renderFollowup);
+$("#saveFu").onclick = async () => {
+  const rows = [["followup_welcome_text", $("#fuWelcomeText").value.trim() || DEFAULT_WELCOME], ["followup_missed_text", $("#fuMissedText").value.trim() || DEFAULT_MISSED], ["followup_missed_after", $("#fuAfter").value]].map(([key, value]) => ({ key, value }));
+  const { error } = await sb.from("settings").upsert(rows);
+  $("#fuSaveMsg").textContent = error ? error.message : "Saved.";
+  if (!error) rows.forEach((r) => (settings[r.key] = r.value));
+};
+function serviceDates(upTo) { // Sundays the church actually met (someone checked in), newest first
+  return [...new Set(attendance.map((a) => a.service_date))].filter((d) => d <= upTo).sort().reverse();
+}
+function followupLists(d) {
+  const present = new Set(attendance.filter((a) => a.service_date === d).map((a) => a.member_id));
+  const done = (id, kind, since) => followups.some((f) => f.member_id === id && f.kind === kind && (since ? f.sent_at.slice(0, 10) >= since : f.service_date === d));
+  const welcome = members.filter((m) => present.has(m.id) && m.status !== "member" && visitorType(m, d) === "first" && !done(m.id, "welcome"));
+  const after = Math.max(1, +(settings.followup_missed_after || 2));
+  const lastN = serviceDates(d).slice(0, after);
+  const fortnightAgo = addDays(ldn(), -14);
+  const missed = lastN.length < after || lastN[0] !== d ? [] : members.filter((m) => {
+    if (m.status === "inactive" || present.has(m.id)) return false;
+    const days = new Set(attendance.filter((a) => a.member_id === m.id).map((a) => a.service_date));
+    const regular = m.status === "member" || days.size >= 2;
+    if (!regular) return false;
+    if (lastN.some((x) => days.has(x))) return false;              // came to one of the last N services
+    if ([...days].every((x) => x > d)) return false;                // only started coming after this Sunday
+    if (m.created_at.slice(0, 10) > lastN[lastN.length - 1]) return false;
+    return !done(m.id, "missed", fortnightAgo);
+  }).map((m) => ({ m, last: [...attendance].filter((a) => a.member_id === m.id && a.service_date < d).map((a) => a.service_date).sort().pop() }));
+  return { welcome, missed, after };
+}
+function fuRow(m, kind, d, note) {
+  const text = fillName(kind === "welcome" ? settings.followup_welcome_text || DEFAULT_WELCOME : settings.followup_missed_text || DEFAULT_MISSED, m.first_name);
+  const wa = m.phone ? `https://wa.me/${waNum(m.phone)}?text=${encodeURIComponent(text)}` : "";
+  const mail = !m.phone && m.email ? `mailto:${m.email}?subject=${encodeURIComponent("Shekinah Nation London")}&body=${encodeURIComponent(text)}` : "";
+  return `<div class="furow" data-id="${m.id}" data-kind="${kind}" data-date="${d}">
+    <div class="fuwho">${av(m)}<div><b class="click-cell" data-open="${m.id}">${esc(m.first_name)} ${esc(m.last_name)}</b><div class="muted" style="font-size:.8rem">${note}</div></div></div>
+    <p class="fumsg">${esc(text)}</p>
+    <div class="fuact">
+      ${wa ? `<a class="btn small" href="${wa}" target="_blank" rel="noopener" data-send="whatsapp">Send on WhatsApp</a>` : mail ? `<a class="btn small" href="${mail}" data-send="email">Send email</a>` : `<span class="muted" style="font-size:.84rem">No phone or email on record</span>`}
+      ${m.phone ? `<a class="btn ghost small" href="tel:${esc(m.phone)}" data-send="call">Call</a>` : ""}
+      <button type="button" class="btn ghost small" data-skip="1">Skip</button>
+    </div>
+  </div>`;
+}
+function renderFollowup() {
+  if (!$("#fuDate").value) $("#fuDate").value = serviceDates(ldn())[0] || lastSunday();
+  const d = $("#fuDate").value;
+  const { welcome, missed, after } = followupLists(d);
+  $("#fuInfo").textContent = attendance.some((a) => a.service_date === d) ? `${new Set(attendance.filter((a) => a.service_date === d).map((a) => a.member_id)).size} people checked in` : "No check-ins recorded for this date";
+  $("#fuWelcomeCount").textContent = welcome.length; $("#fuMissedCount").textContent = missed.length;
+  $("#fuMissedNote").textContent = `Regulars who have missed ${after === 1 ? "this Sunday" : `the last ${after} Sundays in a row`}. Nobody is listed twice within two weeks.`;
+  $("#fuWelcome").innerHTML = welcome.length ? welcome.map((m) => fuRow(m, "welcome", d, `First visit${m.team_id ? ` · interested in ${esc(teamName(m.team_id))}` : ""}${m.wants_followup ? " · asked us to get in touch" : ""}`)).join("") : '<p class="muted">All welcomed. 🙌</p>';
+  $("#fuMissed").innerHTML = missed.length ? missed.map(({ m, last }) => fuRow(m, "missed", d, `Last in ${last ? nice(last) : "a while ago"}${m.status === "member" ? " · member" : ""}`)).join("") : '<p class="muted">Nobody to follow up. 🙌</p>';
+  const total = welcome.length + missed.length;
+  const tb = document.querySelector('#tabs button[data-k="followup"]'); if (tb) tb.textContent = total ? `Follow-up (${total})` : "Follow-up";
+}
+document.addEventListener("click", async (e) => {
+  const send = e.target.closest("[data-send]"), skip = e.target.closest("[data-skip]");
+  if (!send && !skip) return;
+  const row = e.target.closest(".furow"); if (!row || row.classList.contains("fudone")) return;
+  const rec = { member_id: row.dataset.id, kind: row.dataset.kind, service_date: row.dataset.date, status: skip ? "skipped" : "sent", channel: send ? send.dataset.send : null, sent_by: me.id };
+  row.classList.add("fudone");
+  setTimeout(() => { // let the WhatsApp / email / call link open first
+    row.querySelector(".fuact").innerHTML = `<span class="muted" style="font-size:.86rem">${skip ? "Skipped" : "Marked as contacted ✓"}</span> <button type="button" class="linkbtn" data-undo="1">Undo</button>`;
+  }, 0);
+  const { data, error } = await sb.from("followups").insert(rec).select("id").single();
+  if (error) { alert("Couldn't save: " + error.message); row.classList.remove("fudone"); renderFollowup(); return; }
+  followups.push({ ...rec, sent_at: new Date().toISOString() });
+  row.dataset.fid = data.id;
+});
+document.addEventListener("click", async (e) => {
+  const u = e.target.closest("[data-undo]"); if (!u) return;
+  const row = u.closest(".furow"); if (!row?.dataset.fid) return;
+  await sb.from("followups").delete().eq("id", row.dataset.fid);
+  followups = followups.filter((f) => !(f.member_id === row.dataset.id && f.kind === row.dataset.kind && f.service_date === row.dataset.date));
+  renderFollowup();
+});
+
+// ===== FOLLOW-UP REQUESTS =====
 document.addEventListener("click", async (e) => {
   const o = e.target.closest("[data-open]"); if (o) { openMember(o.dataset.open); return; }
   const b = e.target.closest("[data-followed]"); if (!b) return;
@@ -621,6 +745,9 @@ async function renderSettings() {
     <tr><td>${esc(s.full_name)}</td><td>${esc(s.email)}</td><td>${s.role}</td><td>${s.user_id === me.id ? '<span class="muted">you</span>' : `<button class="btn danger small" data-rm="${s.user_id}">Remove</button>`}</td></tr>`).join("");
   $("#posterQr1").src = qrUrl(SNL.PUBLIC_URL + "checkin.html");
   $("#posterQr2").src = qrUrl(SNL.PUBLIC_URL);
+  $("#fuWelcomeText").value = settings.followup_welcome_text || DEFAULT_WELCOME;
+  $("#fuMissedText").value = settings.followup_missed_text || DEFAULT_MISSED;
+  $("#fuAfter").value = settings.followup_missed_after || "2";
   $("#bdMsg").value = settings.birthday_message || "";
   $("#bdCap").value = settings.birthday_caption || "";
   $("#smsOn").checked = settings.sms_enabled === "true";

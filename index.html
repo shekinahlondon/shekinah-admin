@@ -153,7 +153,7 @@
     <section data-tab="members" class="hidden">
       <div class="toolbar">
         <input id="q" placeholder="Search name, phone, email, postcode…">
-        <select id="fStatus"><option value="">All statuses</option><option value="first_timer">First-timers</option><option value="member">Members</option><option value="inactive">Inactive</option><option value="followup">Asked for follow-up</option><option value="updates">Wants news &amp; updates</option><option value="youth">Youth group (18–25)</option><option value="parents">Has children registered</option></select>
+        <select id="fStatus"><option value="">All statuses</option><option value="first_timer">First-timers</option><option value="member">Members</option><option value="inactive">Inactive</option><option value="followup">Asked for follow-up</option><option value="updates">Wants news &amp; updates</option><option value="youth">The NextGen (18–25 adults)</option><option value="parents">Has children registered</option></select>
         <select id="fTeam"><option value="">All teams</option></select>
         <button class="btn ghost small" id="csvMembers">Export CSV</button>
         <a class="btn small" id="addViaForm" target="_blank" rel="noopener">+ Add via form</a>
@@ -180,7 +180,7 @@
     <section data-tab="children" class="hidden">
       <div class="toolbar">
         <input id="cq" placeholder="Search child or parent…">
-        <select id="cGroup"><option value="">All ages</option><option value="kids">Children's (0–12)</option><option value="teens">Teens (13–17)</option><option value="notes">Has safety notes</option></select>
+        <select id="cGroup"><option value="">All ages</option><option value="kids">Children's (0–12)</option><option value="teens">NextGen (13–17)</option><option value="notes">Has safety notes</option></select>
         <button class="btn ghost small" id="csvKids">Export CSV</button>
       </div>
       <div class="grid4" id="kidStats"></div>
@@ -226,12 +226,11 @@
         <button class="btn small" id="saveAlerts">Save</button> <span id="alertMsg"></span>
       </div>
       <div class="card">
-        <h3>Teens &amp; Youth WhatsApp groups</h3>
-        <p class="muted" style="font-size:.86rem;margin-top:0">Parents of 13–17 year olds are offered the Teens link. Adults who tick "I'm 18–25" are offered the Youth link.</p>
-        <label for="teensLink">Teens group link (13–17)</label>
+        <h3>The NextGen WhatsApp group</h3>
+        <p class="muted" style="font-size:.86rem;margin-top:0">One group for ages 13–25. Parents of 13–17 year olds are offered this link, and so are adults who tick "I'm 18–25".</p>
+        <label for="teensLink">The NextGen group link</label>
         <input id="teensLink" placeholder="https://chat.whatsapp.com/…">
-        <label for="youthLink">Youth group link (18–25)</label>
-        <input id="youthLink" placeholder="https://chat.whatsapp.com/…">
+        <input id="youthLink" type="hidden">
         <p style="margin-top:12px"><button class="btn small" id="saveGroups">Save</button> <span id="groupsMsg"></span></p>
       </div>
       <div class="card">
@@ -478,7 +477,7 @@ $("#csvMembers").onclick = () => csv(`snl-members-${ldn()}.csv`, [["First name",
 
 // ===== CHILDREN =====
 function ageOf(dob) { const t = new Date(), b = new Date(dob + "T12:00:00"); let a = t.getFullYear() - b.getFullYear(); if (t.getMonth() < b.getMonth() || (t.getMonth() === b.getMonth() && t.getDate() < b.getDate())) a--; return a; }
-const kidGroup = (c) => (ageOf(c.date_of_birth) >= 13 ? "Teens" : "Children's");
+const kidGroup = (c) => (ageOf(c.date_of_birth) >= 13 ? "NextGen" : "Children's");
 const parentOf = (c) => members.find((m) => m.id === c.parent_id) || {};
 function filteredKids() {
   const q = $("#cq").value.trim().toLowerCase(), g = $("#cGroup").value;
@@ -494,7 +493,7 @@ function filteredKids() {
 function renderChildren() {
   const all = children.filter((c) => ageOf(c.date_of_birth) < 18), list = filteredKids();
   $("#kidStats").innerHTML = [[all.length, "Children registered"], [all.filter((c) => ageOf(c.date_of_birth) < 13).length, "Children's (0–12)"],
-    [all.filter((c) => ageOf(c.date_of_birth) >= 13).length, "Teens (13–17)"], [all.filter((c) => c.notes).length, "With safety notes"]]
+    [all.filter((c) => ageOf(c.date_of_birth) >= 13).length, "NextGen (13–17)"], [all.filter((c) => c.notes).length, "With safety notes"]]
     .map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
   $("#kidTbl").innerHTML = list.length ? `<table class="tbl"><tr><th>Child</th><th>Age</th><th>Group</th><th>Birthday</th><th>Parent</th><th>Parent phone</th><th>Safety notes</th></tr>${list.map((c) => {
     const p = parentOf(c), a = ageOf(c.date_of_birth);
@@ -550,7 +549,7 @@ function kidEditorAdmin(m, k) {
 // ===== TEENS / YOUTH LINKS & MY SHEKINAH INVITES =====
 const WA_RE = /^https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9]+/;
 $("#saveGroups").onclick = async () => {
-  const t = $("#teensLink").value.trim().split("?")[0], y = $("#youthLink").value.trim().split("?")[0];
+  const t = $("#teensLink").value.trim().split("?")[0], y = t;
   if ((t && !WA_RE.test(t)) || (y && !WA_RE.test(y))) { $("#groupsMsg").textContent = "Links should look like https://chat.whatsapp.com/…"; return; }
   const { error } = await sb.from("settings").upsert([{ key: "teens_link", value: t || null }, { key: "youth_link", value: y || null }]);
   $("#groupsMsg").textContent = error ? error.message : "Saved.";
@@ -741,7 +740,7 @@ function openMember(id) {
       <label class="check" style="margin-top:14px"><input type="checkbox" name="birthday_share" ${m.birthday_share ? "checked" : ""}><span>Happy for a birthday card to be posted in the WhatsApp community</span></label>
       ${m.prayer_request ? `<label>Prayer request</label><div class="card" style="margin:0;padding:12px">${esc(m.prayer_request)}</div>` : ""}
       <label>Notes <span class="opt">(admin only)</span></label><textarea name="notes">${esc(m.notes)}</textarea>
-      <p class="muted" style="font-size:.85rem">Wants membership: ${m.wants_membership ? "Yes" : "No"} · WhatsApp community: ${m.join_community ? "Yes" : "No"} · Heard via: ${esc(m.how_heard || "—")} · Consent: ${m.consent_given ? nice(m.consent_at?.slice(0, 10)) : "—"} · News &amp; updates: ${m.updates_consent ? "Yes" : "No"}${m.youth_group ? " · Youth group (18–25)" : ""}</p>
+      <p class="muted" style="font-size:.85rem">Wants membership: ${m.wants_membership ? "Yes" : "No"} · WhatsApp community: ${m.join_community ? "Yes" : "No"} · Heard via: ${esc(m.how_heard || "—")} · Consent: ${m.consent_given ? nice(m.consent_at?.slice(0, 10)) : "—"} · News &amp; updates: ${m.updates_consent ? "Yes" : "No"}${m.youth_group ? " · The NextGen (18–25)" : ""}</p>
       ${m.wants_followup ? `<div class="msg ${m.followed_up_at ? "ok" : "followmsg"}" style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${m.followed_up_at ? `Followed up on ${nice(m.followed_up_at.slice(0, 10))}` : "Asked for someone from the church to get in touch"}</span>${m.followed_up_at ? "" : `<button type="button" class="btn ghost small" data-followed="${m.id}">Mark as done</button>`}</div>` : ""}
       <div id="mMsg"></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">

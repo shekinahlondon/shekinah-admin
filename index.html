@@ -31,6 +31,7 @@
   .stat .v { font-family: "Fraunces", Georgia, serif; font-weight: 500; font-size: 2.3rem; line-height: 1; color: var(--forest); }
   .stat .l { color: var(--muted); font-size: .84rem; margin-top: 8px; }
   .fuhome { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--white); border: 1px solid var(--line); border-left: 4px solid var(--brand-gold); border-radius: 14px; padding: 14px 16px; margin-bottom: 14px; }
+  .kidnote { display: inline-block; background: var(--gold-50); border-radius: 8px; padding: 3px 8px; font-size: .82rem; }
   .furow { border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-top: 10px; background: var(--white); transition: opacity .2s; }
   .furow.fudone { opacity: .6; background: var(--line-soft); }
   .fuwho { display: flex; gap: 12px; align-items: center; }
@@ -152,7 +153,7 @@
     <section data-tab="members" class="hidden">
       <div class="toolbar">
         <input id="q" placeholder="Search name, phone, email, postcode…">
-        <select id="fStatus"><option value="">All statuses</option><option value="first_timer">First-timers</option><option value="member">Members</option><option value="inactive">Inactive</option><option value="followup">Asked for follow-up</option><option value="updates">Wants news &amp; updates</option></select>
+        <select id="fStatus"><option value="">All statuses</option><option value="first_timer">First-timers</option><option value="member">Members</option><option value="inactive">Inactive</option><option value="followup">Asked for follow-up</option><option value="updates">Wants news &amp; updates</option><option value="youth">Youth group (18–25)</option><option value="parents">Has children registered</option></select>
         <select id="fTeam"><option value="">All teams</option></select>
         <button class="btn ghost small" id="csvMembers">Export CSV</button>
         <a class="btn small" id="addViaForm" target="_blank" rel="noopener">+ Add via form</a>
@@ -173,6 +174,18 @@
         <div class="card"><h3>Present</h3><div class="scroll" id="present"></div></div>
         <div class="card"><h3>Not in <span class="muted" style="font-size:.9rem">— worth a check-in call</span></h3><div class="scroll" id="absent"></div></div>
       </div>
+    </section>
+
+    <!-- CHILDREN -->
+    <section data-tab="children" class="hidden">
+      <div class="toolbar">
+        <input id="cq" placeholder="Search child or parent…">
+        <select id="cGroup"><option value="">All ages</option><option value="kids">Children's (0–12)</option><option value="teens">Teens (13–17)</option><option value="notes">Has safety notes</option></select>
+        <button class="btn ghost small" id="csvKids">Export CSV</button>
+      </div>
+      <div class="grid4" id="kidStats"></div>
+      <div class="card" style="margin-top:16px"><div class="scroll" id="kidTbl"></div></div>
+      <p class="muted" style="font-size:.84rem">Children's details and safety notes are visible to admins only. Parents add and update children on My Shekinah, or you can do it from the parent's record.</p>
     </section>
 
     <!-- FOLLOW-UP -->
@@ -211,6 +224,22 @@
         <input id="alertEmails">
         <p class="muted" style="font-size:.85rem">The birthday digest goes out every morning around 8am. Note: until a domain is verified in Resend, emails only reach the Resend account owner's address.</p>
         <button class="btn small" id="saveAlerts">Save</button> <span id="alertMsg"></span>
+      </div>
+      <div class="card">
+        <h3>Teens &amp; Youth WhatsApp groups</h3>
+        <p class="muted" style="font-size:.86rem;margin-top:0">Parents of 13–17 year olds are offered the Teens link. Adults who tick "I'm 18–25" are offered the Youth link.</p>
+        <label for="teensLink">Teens group link (13–17)</label>
+        <input id="teensLink" placeholder="https://chat.whatsapp.com/…">
+        <label for="youthLink">Youth group link (18–25)</label>
+        <input id="youthLink" placeholder="https://chat.whatsapp.com/…">
+        <p style="margin-top:12px"><button class="btn small" id="saveGroups">Save</button> <span id="groupsMsg"></span></p>
+      </div>
+      <div class="card">
+        <h3>My Shekinah</h3>
+        <p class="muted" style="font-size:.88rem;margin-top:0">Everyone with an email can sign in at <a href="https://members.shekinahnationlondon.com/me" target="_blank" rel="noopener">members.shekinahnationlondon.com/me</a> to see their pass, update their details and add their children.</p>
+        <p id="inviteInfo" class="muted" style="font-size:.88rem">Checking…</p>
+        <button class="btn small" id="inviteBtn" disabled>Invite everyone to My Shekinah</button>
+        <div id="inviteMsg"></div>
       </div>
       <div class="card">
         <h3>Follow-up messages</h3>
@@ -295,7 +324,7 @@ function csv(name, rows) {
 }
 const qrUrl = (text) => { const q = qrcode(0, "M"); q.addData(text); q.make(); return q.createDataURL(8, 2); };
 
-let role = null, me = null, members = [], teams = [], attendance = [], followups = [], photoUrls = {}, settings = {};
+let role = null, me = null, members = [], teams = [], attendance = [], followups = [], children = [], photoUrls = {}, settings = {};
 
 // ===== AUTH =====
 $("#lf").addEventListener("submit", async (e) => {
@@ -314,7 +343,7 @@ async function boot() {
   role = r; me = session.user;
   $("#loginView").classList.add("hidden"); $("#appView").classList.remove("hidden");
   $("#whoName").textContent = `${me.email} · ${role}`;
-  const tabs = role === "admin" ? [["home", "Home"], ["scan", "Scan"], ["members", "Members"], ["attendance", "Attendance"], ["followup", "Follow-up"], ["settings", "Settings"]] : [["scan", "Scan"]];
+  const tabs = role === "admin" ? [["home", "Home"], ["scan", "Scan"], ["members", "Members"], ["children", "Children"], ["attendance", "Attendance"], ["followup", "Follow-up"], ["settings", "Settings"]] : [["scan", "Scan"]];
   $("#tabs").innerHTML = tabs.map(([k, l]) => `<button data-k="${k}">${l}</button>`).join("");
   $("#tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) go(b.dataset.k); };
   if (role === "admin") {
@@ -332,19 +361,20 @@ function go(k) {
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.k === k));
   history.replaceState(null, "", "#" + k);
   if (k !== "scan") stopCam();
-  ({ home: renderHome, members: renderMembers, attendance: renderAttendance, followup: renderFollowup, settings: renderSettings }[k] || (() => {}))();
+  ({ home: renderHome, members: renderMembers, attendance: renderAttendance, followup: renderFollowup, children: renderChildren, settings: renderSettings }[k] || (() => {}))();
 }
 
 async function loadAll() {
   const since = addDays(ldn(), -400);
-  const [m, t, a, s, f] = await Promise.all([
+  const [m, t, a, s, f, c] = await Promise.all([
     sb.from("members").select("*").order("created_at", { ascending: false }),
     sb.from("teams").select("*").order("sort_order"),
     sb.from("attendance").select("member_id,service_date,checked_in_at,method").gte("service_date", since).order("checked_in_at"),
     sb.from("settings").select("*"),
     sb.from("followups").select("member_id,kind,service_date,status,sent_at").gte("sent_at", since),
+    sb.from("children").select("*").order("date_of_birth"),
   ]);
-  members = m.data || []; teams = t.data || []; attendance = a.data || []; followups = f.data || [];
+  members = m.data || []; teams = t.data || []; attendance = a.data || []; followups = f.data || []; children = c.data || [];
   settings = Object.fromEntries((s.data || []).map((r) => [r.key, r.value]));
   const paths = members.map((x) => x.photo_path).filter((p) => p && !photoUrls[p]);
   for (let i = 0; i < paths.length; i += 100) {
@@ -437,7 +467,7 @@ function memberTable(list) {
 }
 function filtered() {
   const q = $("#q").value.trim().toLowerCase(), st = $("#fStatus").value, tm = $("#fTeam").value;
-  return members.filter((m) => (!st || (st === "followup" ? m.wants_followup && !m.followed_up_at : st === "updates" ? m.updates_consent : m.status === st)) && (!tm || String(m.team_id) === tm) &&
+  return members.filter((m) => (!st || (st === "followup" ? m.wants_followup && !m.followed_up_at : st === "updates" ? m.updates_consent : st === "youth" ? m.youth_group : st === "parents" ? children.some((c) => c.parent_id === m.id) : m.status === st)) && (!tm || String(m.team_id) === tm) &&
     (!q || [m.first_name, m.last_name, m.first_name + " " + m.last_name, m.email, m.phone, m.postcode, m.member_code].some((v) => (v || "").toLowerCase().includes(q))));
 }
 function renderMembers() { const l = filtered(); $("#memCount").textContent = `${l.length} of ${members.length}`; $("#memTbl").innerHTML = memberTable(l).replace(/^<table class="tbl">|<\/table>$/g, ""); }
@@ -445,6 +475,110 @@ function renderMembers() { const l = filtered(); $("#memCount").textContent = `$
 document.addEventListener("click", (e) => { const r = e.target.closest("tr.click"); if (r) openMember(r.dataset.id); });
 $("#csvMembers").onclick = () => csv(`snl-members-${ldn()}.csv`, [["First name", "Last name", "Email", "Phone", "Birthday", "Address", "Postcode", "Team", "Status", "Wants membership", "WhatsApp community", "Asked for follow-up", "News & updates", "How heard", "Joined", "Last in", "Code"],
   ...filtered().map((m) => [m.first_name, m.last_name, m.email, m.phone, SNL.dobText(m.date_of_birth), m.address, m.postcode, teamName(m.team_id), m.status, m.wants_membership ? "Yes" : "No", m.join_community ? "Yes" : "No", m.wants_followup ? (m.followed_up_at ? "Done " + m.followed_up_at.slice(0, 10) : "Yes") : "No", m.updates_consent ? "Yes" : "No", m.how_heard, m.created_at.slice(0, 10), lastSeen(m.id), m.member_code])]);
+
+// ===== CHILDREN =====
+function ageOf(dob) { const t = new Date(), b = new Date(dob + "T12:00:00"); let a = t.getFullYear() - b.getFullYear(); if (t.getMonth() < b.getMonth() || (t.getMonth() === b.getMonth() && t.getDate() < b.getDate())) a--; return a; }
+const kidGroup = (c) => (ageOf(c.date_of_birth) >= 13 ? "Teens" : "Children's");
+const parentOf = (c) => members.find((m) => m.id === c.parent_id) || {};
+function filteredKids() {
+  const q = $("#cq").value.trim().toLowerCase(), g = $("#cGroup").value;
+  return children.filter((c) => {
+    const p = parentOf(c), a = ageOf(c.date_of_birth);
+    if (a >= 18) return false;
+    if (g === "kids" && a >= 13) return false;
+    if (g === "teens" && a < 13) return false;
+    if (g === "notes" && !c.notes) return false;
+    return !q || [c.first_name, c.last_name, p.first_name, p.last_name, `${p.first_name} ${p.last_name}`].some((v) => (v || "").toLowerCase().includes(q));
+  });
+}
+function renderChildren() {
+  const all = children.filter((c) => ageOf(c.date_of_birth) < 18), list = filteredKids();
+  $("#kidStats").innerHTML = [[all.length, "Children registered"], [all.filter((c) => ageOf(c.date_of_birth) < 13).length, "Children's (0–12)"],
+    [all.filter((c) => ageOf(c.date_of_birth) >= 13).length, "Teens (13–17)"], [all.filter((c) => c.notes).length, "With safety notes"]]
+    .map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+  $("#kidTbl").innerHTML = list.length ? `<table class="tbl"><tr><th>Child</th><th>Age</th><th>Group</th><th>Birthday</th><th>Parent</th><th>Parent phone</th><th>Safety notes</th></tr>${list.map((c) => {
+    const p = parentOf(c), a = ageOf(c.date_of_birth);
+    return `<tr><td><b>${esc(c.first_name)} ${esc(c.last_name || "")}</b></td><td>${a}</td><td><span class="pill ${a >= 13 ? "type-member" : "type-first"}">${kidGroup(c)}</span></td>
+      <td>${nice(c.date_of_birth, { day: "numeric", month: "short" })}</td><td class="click-cell" data-open="${p.id || ""}"><b>${esc(p.first_name || "")} ${esc(p.last_name || "")}</b></td>
+      <td>${p.phone ? `<a href="tel:${esc(p.phone)}">${esc(p.phone)}</a>` : ""}</td><td style="max-width:260px">${c.notes ? `<span class="kidnote">${esc(c.notes)}</span>` : '<span class="muted">—</span>'}</td></tr>`;
+  }).join("")}</table>` : '<p class="muted">No children registered yet.</p>';
+}
+["#cq", "#cGroup"].forEach((sel) => $(sel).addEventListener("input", renderChildren));
+$("#csvKids").onclick = () => csv(`snl-children-${ldn()}.csv`, [["Child first name", "Child last name", "Date of birth", "Age", "Group", "Safety notes", "Parent", "Parent phone", "Parent email"],
+  ...filteredKids().map((c) => { const p = parentOf(c); return [c.first_name, c.last_name, c.date_of_birth, ageOf(c.date_of_birth), kidGroup(c), c.notes, `${p.first_name || ""} ${p.last_name || ""}`, p.phone, p.email]; })]);
+function renderModalKids(m) {
+  const ks = children.filter((c) => c.parent_id === m.id);
+  $("#mKids").innerHTML = ks.length ? `<table class="tbl">${ks.map((c) => `<tr><td><b>${esc(c.first_name)} ${esc(c.last_name || "")}</b><div class="muted" style="font-size:.8rem">${ageOf(c.date_of_birth)} years · ${kidGroup(c)}${c.notes ? ` · ${esc(c.notes)}` : ""}</div></td>
+    <td style="text-align:right"><button type="button" class="btn ghost small" data-kidedit="${c.id}">Edit</button></td></tr>`).join("")}</table>` : '<p class="muted" style="margin:0">No children registered.</p>';
+  $("#mKids").onclick = (e) => { const b = e.target.closest("[data-kidedit]"); if (b) kidEditorAdmin(m, children.find((c) => c.id === b.dataset.kidedit)); };
+}
+function kidEditorAdmin(m, k) {
+  const y = new Date().getFullYear();
+  const [ky, km, kd] = k ? k.date_of_birth.split("-").map(Number) : [0, 0, 0];
+  const o = (v, cur, l) => `<option value="${v}" ${v === cur ? "selected" : ""}>${l}</option>`;
+  $("#mKids").innerHTML = `<div class="card" style="margin:8px 0 0;padding:14px">
+    <div class="row"><div><label>First name</label><input id="akf" value="${esc(k?.first_name || "")}"></div><div><label>Last name</label><input id="akl" value="${esc(k ? k.last_name || "" : m.last_name)}"></div></div>
+    <label>Date of birth</label><div class="dob"><select id="akd"><option value="">Day</option>${Array.from({ length: 31 }, (_, i) => o(i + 1, kd, i + 1)).join("")}</select>
+      <select id="akm"><option value="">Month</option>${SNL.MONTHS.map((n, i) => o(i + 1, km, n)).join("")}</select>
+      <select id="aky"><option value="">Year</option>${Array.from({ length: 18 }, (_, i) => y - i).map((v) => o(v, ky, v)).join("")}</select></div>
+    <label>Safety notes <span class="opt">(allergies, medical or additional needs)</span></label><textarea id="akn">${esc(k?.notes || "")}</textarea>
+    <div id="akErr"></div>
+    <p style="margin:10px 0 0;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn small" id="akSave">${k ? "Save child" : "Add child"}</button>
+      <button type="button" class="btn ghost small" id="akCancel">Cancel</button>${k ? '<button type="button" class="btn danger small" id="akDel" style="margin-left:auto">Remove</button>' : ""}</p></div>`;
+  $("#mAddKid").hidden = true;
+  const back = () => { $("#mAddKid").hidden = false; renderModalKids(m); };
+  $("#akCancel").onclick = back;
+  if (k) $("#akDel").onclick = async () => {
+    if (!confirm(`Remove ${k.first_name}?`)) return;
+    const { error } = await sb.from("children").delete().eq("id", k.id);
+    if (error) return ($("#akErr").innerHTML = `<div class="msg err">${esc(error.message)}</div>`);
+    children = children.filter((c) => c.id !== k.id); back();
+  };
+  $("#akSave").onclick = async () => {
+    const d = +$("#akd").value, mo = +$("#akm").value, yr = +$("#aky").value, dt = d && mo && yr ? new Date(Date.UTC(yr, mo - 1, d)) : null;
+    if (!$("#akf").value.trim()) return ($("#akErr").innerHTML = '<div class="msg err">First name is required.</div>');
+    if (!dt || dt.getUTCMonth() !== mo - 1) return ($("#akErr").innerHTML = '<div class="msg err">Choose the full date of birth.</div>');
+    const row = { parent_id: m.id, first_name: $("#akf").value.trim(), last_name: $("#akl").value.trim() || null, date_of_birth: dt.toISOString().slice(0, 10), notes: $("#akn").value.trim() || null };
+    const q = k ? sb.from("children").update(row).eq("id", k.id).select().single() : sb.from("children").insert(row).select().single();
+    const { data, error } = await q;
+    if (error) return ($("#akErr").innerHTML = `<div class="msg err">${esc(error.message)}</div>`);
+    children = k ? children.map((c) => (c.id === k.id ? data : c)) : [...children, data];
+    back();
+  };
+}
+
+// ===== TEENS / YOUTH LINKS & MY SHEKINAH INVITES =====
+const WA_RE = /^https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9]+/;
+$("#saveGroups").onclick = async () => {
+  const t = $("#teensLink").value.trim().split("?")[0], y = $("#youthLink").value.trim().split("?")[0];
+  if ((t && !WA_RE.test(t)) || (y && !WA_RE.test(y))) { $("#groupsMsg").textContent = "Links should look like https://chat.whatsapp.com/…"; return; }
+  const { error } = await sb.from("settings").upsert([{ key: "teens_link", value: t || null }, { key: "youth_link", value: y || null }]);
+  $("#groupsMsg").textContent = error ? error.message : "Saved.";
+  if (!error) { settings.teens_link = t; settings.youth_link = y; }
+};
+async function inviteCall(action) {
+  const { data: { session } } = await sb.auth.getSession();
+  const r = await fetch(`${SNL.SUPABASE_URL}/functions/v1/invite-all`, { method: "POST", headers: { apikey: SNL.SUPABASE_KEY, Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+  return r.json();
+}
+async function refreshInvite() {
+  try {
+    const out = await inviteCall("preview");
+    if (!out.ok) throw new Error(out.error);
+    $("#inviteInfo").textContent = out.to_invite
+      ? `${out.to_invite} ${out.to_invite === 1 ? "person hasn't" : "people haven't"} been invited yet${out.already_invited ? ` (${out.already_invited} already invited)` : ""}. Each gets one email with a button to sign in.`
+      : `Everyone with an email has been invited${out.already_invited ? ` (${out.already_invited})` : ""}. New registrations get the link in their welcome email.`;
+    $("#inviteBtn").disabled = !out.to_invite;
+    $("#inviteBtn").textContent = out.to_invite ? `Invite ${out.to_invite} ${out.to_invite === 1 ? "person" : "people"} to My Shekinah` : "Everyone's been invited";
+  } catch (e) { $("#inviteInfo").textContent = "Couldn't check invites: " + e.message; }
+}
+$("#inviteBtn").onclick = async () => {
+  if (!confirm("Send the My Shekinah invitation email now? Each person is only ever invited once.")) return;
+  $("#inviteBtn").disabled = true; $("#inviteBtn").textContent = "Sending…";
+  const out = await inviteCall("send").catch((e) => ({ ok: false, error: e.message }));
+  $("#inviteMsg").innerHTML = out.ok ? `<div class="msg ok">Sent to ${out.sent} ${out.sent === 1 ? "person" : "people"}${out.failed ? `. ${out.failed} couldn't be sent. Try again later.` : "."}</div>` : `<div class="msg err">${esc(out.error || "Something went wrong.")}</div>`;
+  await loadAll(); refreshInvite();
+};
 
 // ===== FOLLOW-UP =====
 const DEFAULT_WELCOME = "Hi {name}, it was so lovely to have you with us at Shekinah Nation London on Sunday! We'd love to see you again. If there's anything you'd like to know about us, or anything we can pray with you about, just reply here. God bless you 💛";
@@ -607,7 +741,7 @@ function openMember(id) {
       <label class="check" style="margin-top:14px"><input type="checkbox" name="birthday_share" ${m.birthday_share ? "checked" : ""}><span>Happy for a birthday card to be posted in the WhatsApp community</span></label>
       ${m.prayer_request ? `<label>Prayer request</label><div class="card" style="margin:0;padding:12px">${esc(m.prayer_request)}</div>` : ""}
       <label>Notes <span class="opt">(admin only)</span></label><textarea name="notes">${esc(m.notes)}</textarea>
-      <p class="muted" style="font-size:.85rem">Wants membership: ${m.wants_membership ? "Yes" : "No"} · WhatsApp community: ${m.join_community ? "Yes" : "No"} · Heard via: ${esc(m.how_heard || "—")} · Consent: ${m.consent_given ? nice(m.consent_at?.slice(0, 10)) : "—"} · News &amp; updates: ${m.updates_consent ? "Yes" : "No"}</p>
+      <p class="muted" style="font-size:.85rem">Wants membership: ${m.wants_membership ? "Yes" : "No"} · WhatsApp community: ${m.join_community ? "Yes" : "No"} · Heard via: ${esc(m.how_heard || "—")} · Consent: ${m.consent_given ? nice(m.consent_at?.slice(0, 10)) : "—"} · News &amp; updates: ${m.updates_consent ? "Yes" : "No"}${m.youth_group ? " · Youth group (18–25)" : ""}</p>
       ${m.wants_followup ? `<div class="msg ${m.followed_up_at ? "ok" : "followmsg"}" style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${m.followed_up_at ? `Followed up on ${nice(m.followed_up_at.slice(0, 10))}` : "Asked for someone from the church to get in touch"}</span>${m.followed_up_at ? "" : `<button type="button" class="btn ghost small" data-followed="${m.id}">Mark as done</button>`}</div>` : ""}
       <div id="mMsg"></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
@@ -620,12 +754,17 @@ function openMember(id) {
     </form>
     <div id="mQrBox" class="center hidden"><div class="qrbox"><img src="${qrUrl("SNL-" + m.member_code)}" alt=""></div></div>
     <div id="mCardBox" class="center hidden" style="margin-top:14px"></div>
+    <h3 style="margin-top:22px">Family</h3>
+    <div id="mKids"></div>
+    <p style="margin:8px 0 0"><button type="button" class="btn ghost small" id="mAddKid">+ Add a child</button></p>
     <h3 style="margin-top:22px">Attendance (${hist.length})</h3>
     <p class="muted">${hist.length ? hist.slice(0, 30).map((d) => nice(d, { day: "numeric", month: "short", year: "2-digit" })).join(" · ") : "Not recorded yet."}</p>`;
   $("#modal").classList.remove("hidden");
   $("#mClose").onclick = closeModal;
   SNL.dobFields($("#mDob"), m.date_of_birth, false);
   $("#mQr").onclick = () => $("#mQrBox").classList.toggle("hidden");
+  renderModalKids(m);
+  $("#mAddKid").onclick = () => kidEditorAdmin(m, null);
   $("#mCard").onclick = async () => {
     const box = $("#mCardBox"); box.classList.remove("hidden"); box.innerHTML = '<p class="muted">Making the card…</p>';
     try {
@@ -745,6 +884,9 @@ async function renderSettings() {
     <tr><td>${esc(s.full_name)}</td><td>${esc(s.email)}</td><td>${s.role}</td><td>${s.user_id === me.id ? '<span class="muted">you</span>' : `<button class="btn danger small" data-rm="${s.user_id}">Remove</button>`}</td></tr>`).join("");
   $("#posterQr1").src = qrUrl(SNL.PUBLIC_URL + "checkin.html");
   $("#posterQr2").src = qrUrl(SNL.PUBLIC_URL);
+  $("#teensLink").value = settings.teens_link || "";
+  $("#youthLink").value = settings.youth_link || "";
+  refreshInvite();
   $("#fuWelcomeText").value = settings.followup_welcome_text || DEFAULT_WELCOME;
   $("#fuMissedText").value = settings.followup_missed_text || DEFAULT_MISSED;
   $("#fuAfter").value = settings.followup_missed_after || "2";

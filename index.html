@@ -338,6 +338,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="config.js"></script>
 <script>
 const sb = supabase.createClient(SNL.SUPABASE_URL, SNL.SUPABASE_KEY);
@@ -788,12 +789,13 @@ function renderGiftAid() {
       <td style="max-width:240px">${esc(d.address)}</td><td>${esc(d.postcode)}</td><td>${nice(d.declared_at.slice(0, 10))}</td>
       <td>${GA_SRC[d.source] || d.source}${d.paper_ref ? `<br><span class="muted" style="font-size:.8rem">${esc(d.paper_ref)}</span>` : ""}</td>
       <td>${d.cancelled_at ? `<span class="pill" title="${esc(d.cancel_note || "")}">Cancelled ${nice(d.cancelled_at.slice(0, 10), { day: "numeric", month: "short", year: "2-digit" })}</span>` : '<span class="pill type-first">Active</span>'}</td>
-      <td>${d.cancelled_at ? "" : `<button class="btn ghost small" data-gacancel="${d.id}">Cancel</button>`}</td></tr>`;
+      <td style="white-space:nowrap"><button class="btn ghost small" data-gapdf="${d.id}" title="Download this declaration as a PDF">PDF</button> ${d.cancelled_at ? "" : `<button class="btn ghost small" data-gacancel="${d.id}">Cancel</button>`}</td></tr>`;
   }).join("")}</table>` : `<p class="muted">${giftAid.length ? "No declarations match." : "No Gift Aid declarations yet."}</p>`;
 }
 ["#gq", "#gStatus", "#gBranch"].forEach((sel) => $(sel).addEventListener("input", renderGiftAid));
 $("#gaTbl").addEventListener("click", (e) => {
   const c = e.target.closest("[data-gacancel]"); if (c) return gaCancel(giftAid.find((d) => d.id === c.dataset.gacancel));
+  const pdfBtn = e.target.closest("[data-gapdf]"); if (pdfBtn) return gaPdf(giftAid.find((d) => d.id === pdfBtn.dataset.gapdf));
 });
 // HMRC Charities Online schedule: house name or number is the first part of the address
 function houseOf(addr) {
@@ -805,6 +807,75 @@ $("#csvHmrc").onclick = () => csv(`gift-aid-hmrc-${ldn()}.csv`, [["Title", "Firs
   ...giftAid.filter((d) => !d.cancelled_at && (!$("#gBranch").value || d.branch === $("#gBranch").value)).map((d) => [(d.title || "").slice(0, 4), d.first_name.slice(0, 35), d.last_name.slice(0, 35), houseOf(d.address), d.postcode, "", "", "", ""])]);
 $("#csvGa").onclick = () => csv(`gift-aid-declarations-${ldn()}.csv`, [["Church", "Title", "First name", "Last name", "Address", "Postcode", "Email", "Phone", "Declared", "How", "Paper reference", "Status", "Cancelled", "Cancel note", "Copy emailed", "Wording"],
   ...filteredGa().map((d) => [BRANCH[d.branch], d.title, d.first_name, d.last_name, d.address, d.postcode, d.email, d.phone, d.declared_at.slice(0, 10), GA_SRC[d.source], d.paper_ref, d.cancelled_at ? "Cancelled" : "Active", d.cancelled_at?.slice(0, 10), d.cancel_note, d.confirmation_sent_at ? "Yes" : "No", d.declaration_text])]);
+
+// One declaration as a PDF record (for HMRC audits, or to send the donor a copy)
+let logoData = null;
+async function logoDataUrl() {
+  if (logoData) return logoData;
+  try { const b = await (await fetch("logo.png")).blob(); logoData = await new Promise((r) => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); }); } catch { logoData = ""; }
+  return logoData;
+}
+async function gaPdf(d) {
+  if (!d || !window.jspdf) return alert("The PDF tool didn't load. Check your connection and try again.");
+  const { jsPDF } = window.jspdf, doc = new jsPDF({ unit: "mm", format: "a4" });
+  const W = 210, M = 18, ink = [20, 20, 20], muted = [100, 100, 95], yellow = [255, 223, 44];
+  const when = (iso) => iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }) : "";
+  const church = d.branch === "leicester" ? "Shekinah Nation Leicester" : "Shekinah Nation London";
+  // Header
+  const logo = await logoDataUrl();
+  if (logo) doc.addImage(logo, "PNG", M, 14, 22, 22);
+  doc.setFillColor(...yellow); doc.roundedRect(M + 27, 15, 50, 6.5, 1.5, 1.5, "F");
+  doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.setTextColor(...ink); doc.text("GIFT AID DECLARATION", M + 29.5, 19.6, { charSpace: 0.6 });
+  doc.setFont("times", "normal"); doc.setFontSize(22); doc.text("Declaration record", M + 27, 30);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(...muted);
+  doc.text(`${d.charity_name || "Shekinah Nation"} · registered charity 1206699 · ${church}`, M + 27, 35.5);
+  doc.setDrawColor(...ink); doc.setLineWidth(0.7); doc.line(M, 41, W - M, 41);
+  // Status pill
+  const cancelled = !!d.cancelled_at;
+  doc.setFillColor(...(cancelled ? [240, 236, 228] : [234, 245, 239])); doc.roundedRect(W - M - 34, 15, 34, 7, 2, 2, "F");
+  doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...(cancelled ? [110, 100, 90] : [30, 107, 69]));
+  doc.text(cancelled ? "CANCELLED" : "ACTIVE", W - M - 17, 19.8, { align: "center" });
+
+  let y = 52;
+  const label = (t) => { doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...muted); doc.text(t.toUpperCase(), M, y, { charSpace: 0.4 }); y += 5; };
+  const row = (k, v) => {
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...muted); doc.text(k, M, y);
+    doc.setTextColor(...ink); doc.setFontSize(10.5);
+    const lines = doc.splitTextToSize(String(v || "—"), W - M * 2 - 48); doc.text(lines, M + 48, y);
+    y += Math.max(1, lines.length) * 5.2 + 2.2;
+  };
+  // Declaration box
+  label("The declaration");
+  doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); doc.setTextColor(...ink);
+  const decl = doc.splitTextToSize(d.declaration_text || "", W - M * 2 - 10);
+  const boxH = decl.length * 4.6 + 7;
+  doc.setFillColor(255, 251, 234); doc.setDrawColor(...ink); doc.setLineWidth(0.5); doc.roundedRect(M, y - 1, W - M * 2, boxH, 3, 3, "FD");
+  doc.text(decl, M + 5, y + 5, { lineHeightFactor: 1.3 }); y += boxH + 9;
+
+  label("Donor");
+  row("Name", [d.title, d.first_name, d.last_name].filter(Boolean).join(" "));
+  row("Home address", d.address);
+  row("Postcode", d.postcode);
+  row("Email", d.email);
+  row("Phone", d.phone);
+  y += 3; label("Record");
+  row("Church", church);
+  row("Date of declaration", when(d.declared_at));
+  row("How it was made", d.source === "paper" ? "Paper form" : d.source === "my_shekinah" ? "Online, signed in to My Shekinah" : "Online form");
+  if (d.source === "paper") row("Signed original kept in", d.paper_ref || "Not recorded");
+  else row("Copy emailed to donor", d.confirmation_sent_at ? `Yes, ${when(d.confirmation_sent_at)}` : "No");
+  row("Covers", "Donations in the 4 years before the declaration date, and all donations from then on until cancelled");
+  if (cancelled) row("Cancelled", `${when(d.cancelled_at)}${d.cancel_note ? " · " + d.cancel_note : ""}`);
+  row("Record ID", d.id);
+
+  // Footer
+  doc.setDrawColor(200, 198, 190); doc.setLineWidth(0.3); doc.line(M, 275, W - M, 275);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...muted);
+  doc.text(doc.splitTextToSize(`Generated ${new Date().toLocaleString("en-GB", { timeZone: "Europe/London", dateStyle: "long", timeStyle: "short" })} from the Shekinah Nation Gift Aid register. ` +
+    "Kept to support Gift Aid claims to HMRC. Contains personal data: store securely.", W - M * 2), M, 280);
+  const safe = (t) => String(t || "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  doc.save(`Gift-Aid-${safe(d.first_name)}-${safe(d.last_name)}-${(d.declared_at || "").slice(0, 10)}.pdf`);
+}
 
 function gaCancel(d) {
   if (!d) return;

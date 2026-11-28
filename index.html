@@ -199,6 +199,7 @@
       <div class="toolbar">
         <input id="gq" placeholder="Search name, postcode, email…">
         <select id="gStatus"><option value="active">Active</option><option value="cancelled">Cancelled</option><option value="">All</option></select>
+        <select id="gBranch"><option value="">Both churches</option><option value="london">London</option><option value="leicester">Leicester</option></select>
         <button class="btn ghost small" id="csvHmrc" title="Columns match the HMRC Charities Online donations schedule">Export for HMRC</button>
         <button class="btn ghost small" id="csvGa">Export all</button>
         <button class="btn small" id="gaPaper">+ Record a paper form</button>
@@ -208,7 +209,7 @@
       <div class="card">
         <h3>How it works</h3>
         <ul class="muted" style="font-size:.88rem;line-height:1.6;margin:0;padding-left:18px">
-          <li>People declare online at <a id="gaLink" target="_blank" rel="noopener"></a>, or on My Shekinah. They get an emailed copy straight away.</li>
+          <li>People declare online at <a id="gaLink" target="_blank" rel="noopener"></a> (no account needed, for London and Leicester) or on My Shekinah. They get an emailed copy straight away. Leicester link: <a id="gaLinkLei" target="_blank" rel="noopener"></a></li>
           <li>Paper forms: <a id="gaPrint" target="_blank" rel="noopener">print the blank form</a>, then record each one here and <b>keep the signed paper</b>. HMRC needs the original, so the record alone isn't enough.</li>
           <li>One declaration covers everything the person has given in the 4 years before it and everything they give afterwards, until they cancel.</li>
           <li><b>Export for HMRC</b> fills in name, house number and postcode for each active declaration. Add the donation dates and amounts from your giving records, then upload it in Charities Online.</li>
@@ -307,7 +308,8 @@
           <div><label for="invName">Name</label><input id="invName"></div>
         </div>
         <label for="invRole">Role</label>
-        <select id="invRole"><option value="usher">Usher — can scan QR codes only</option><option value="admin">Admin — full access to member data</option></select>
+        <select id="invRole"><option value="usher">Usher — can scan QR codes only</option><option value="admin">Admin — full access to member data</option><option value="giftaid:leicester">Gift Aid only — Leicester declarations</option><option value="giftaid:london">Gift Aid only — London declarations</option><option value="giftaid:">Gift Aid only — both churches</option></select>
+        <p class="muted" style="font-size:.84rem;margin:6px 0 0">Gift Aid logins see the Gift Aid tab only, with no access to member records.</p>
         <p style="margin-top:12px"><button class="btn small" id="invBtn">Create setup link</button></p>
         <div id="invOut"></div>
       </div>
@@ -352,7 +354,12 @@ function csv(name, rows) {
 }
 const qrUrl = (text) => { const q = qrcode(0, "M"); q.addData(text); q.make(); return q.createDataURL(8, 2); };
 
-let giftAid = [];
+let giftAid = [], gaScope = "all";
+const BRANCH = { london: "London", leicester: "Leicester" };
+async function loadGiftAidOnly() {
+  const [g, s] = await Promise.all([sb.from("gift_aid_declarations").select("*").order("declared_at", { ascending: false }), sb.from("settings").select("*")]);
+  giftAid = g.data || []; settings = Object.fromEntries((s.data || []).map((r) => [r.key, r.value]));
+}
 let role = null, me = null, members = [], teams = [], attendance = [], followups = [], children = [], photoUrls = {}, settings = {};
 
 // ===== AUTH =====
@@ -371,10 +378,15 @@ async function boot() {
   if (!r) { $("#lmsg").textContent = "This account doesn't have access. Ask an admin to invite you."; $("#lmsg").classList.remove("hidden"); await sb.auth.signOut(); return; }
   role = r; me = session.user;
   $("#loginView").classList.add("hidden"); $("#appView").classList.remove("hidden");
-  $("#whoName").textContent = `${me.email} · ${role}`;
-  const tabs = role === "admin" ? [["home", "Home"], ["scan", "Scan"], ["members", "Members"], ["children", "Children"], ["giftaid", "Gift Aid"], ["attendance", "Attendance"], ["followup", "Follow-up"], ["settings", "Settings"]] : [["scan", "Scan"]];
+  $("#whoName").textContent = `${me.email} · ${role === "giftaid" ? "Gift Aid" : role}`;
+  if (role === "giftaid") { const { data: info } = await sb.rpc("my_staff_info"); gaScope = info?.branch || "all"; }
+  const tabs = role === "giftaid" ? [["giftaid", "Gift Aid"]] : role === "admin" ? [["home", "Home"], ["scan", "Scan"], ["members", "Members"], ["children", "Children"], ["giftaid", "Gift Aid"], ["attendance", "Attendance"], ["followup", "Follow-up"], ["settings", "Settings"]] : [["scan", "Scan"]];
   $("#tabs").innerHTML = tabs.map(([k, l]) => `<button data-k="${k}">${l}</button>`).join("");
   $("#tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) go(b.dataset.k); };
+  if (role === "giftaid") {
+    await loadGiftAidOnly();
+    document.querySelector(".topbrand span").innerHTML = `<b>Gift Aid</b>${gaScope === "all" ? "Shekinah Nation" : BRANCH[gaScope]}`;
+  }
   if (role === "admin") {
     await loadAll();
     // Remember the site address so birthday emails can link back to the dashboard
@@ -750,29 +762,33 @@ function gaLine(m) {
 }
 document.addEventListener("click", (e) => { const a = e.target.closest("[data-gotab]"); if (a) { e.preventDefault(); closeModal(); go(a.dataset.gotab); } });
 function filteredGa() {
-  const q = $("#gq").value.trim().toLowerCase(), st = $("#gStatus").value;
-  return giftAid.filter((d) => (st === "active" ? !d.cancelled_at : st === "cancelled" ? !!d.cancelled_at : true) &&
+  const q = $("#gq").value.trim().toLowerCase(), st = $("#gStatus").value, br = $("#gBranch").value;
+  return giftAid.filter((d) => (!br || d.branch === br) && (st === "active" ? !d.cancelled_at : st === "cancelled" ? !!d.cancelled_at : true) &&
     (!q || [d.first_name, d.last_name, `${d.first_name} ${d.last_name}`, d.postcode, d.email, d.address].some((v) => (v || "").toLowerCase().includes(q))));
 }
 function renderGiftAid() {
-  const pub = SNL.PUBLIC_URL || "https://members.shekinahnationlondon.com/";
-  $("#gaLink").href = pub + "giftaid"; $("#gaLink").textContent = pub.replace(/^https?:\/\//, "") + "giftaid";
+  const pub = SNL.GIFTAID_URL;
+  $("#gaLink").href = pub; $("#gaLink").textContent = pub.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  $("#gaLinkLei").href = pub + "?church=leicester"; $("#gaLinkLei").textContent = pub.replace(/^https?:\/\//, "") + "?church=leicester";
   $("#gaPrint").href = pub + "giftaid-form.pdf";
-  const live = giftAid.filter((d) => !d.cancelled_at), month = ldn().slice(0, 7);
+  $("#gBranch").hidden = gaScope !== "all";
+  const br = $("#gBranch").value;
+  const live = giftAid.filter((d) => !d.cancelled_at && (!br || d.branch === br)), month = ldn().slice(0, 7);
   $("#gaStats").innerHTML = [[live.length, "Active declarations"], [live.filter((d) => d.declared_at.slice(0, 7) === month).length, "Added this month"],
-    [live.filter((d) => d.source === "paper").length, "Paper forms"], [giftAid.length - live.length, "Cancelled"]]
+    [live.filter((d) => d.source === "paper").length, "Paper forms"], [giftAid.filter((d) => d.cancelled_at && (!br || d.branch === br)).length, "Cancelled"]]
     .map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
   const list = filteredGa();
-  $("#gaTbl").innerHTML = list.length ? `<table class="tbl"><tr><th>Name</th><th>Address</th><th>Postcode</th><th>Declared</th><th>How</th><th>Status</th><th></th></tr>${list.map((d) => {
+  $("#gaTbl").innerHTML = list.length ? `<table class="tbl"><tr><th>Name</th><th>Church</th><th>Address</th><th>Postcode</th><th>Declared</th><th>How</th><th>Status</th><th></th></tr>${list.map((d) => {
     const mem = d.member_id && members.find((x) => x.id === d.member_id);
-    return `<tr><td${mem ? ` class="click-cell" data-open="${mem.id}"` : ""}><b>${esc([d.title, d.first_name, d.last_name].filter(Boolean).join(" "))}</b>${d.email ? `<br><span class="muted" style="font-size:.8rem">${esc(d.email)}</span>` : ""}</td>
+    const church = `<td>${BRANCH[d.branch] || ""}</td>`;
+    return `<tr><td${mem ? ` class="click-cell" data-open="${mem.id}"` : ""}><b>${esc([d.title, d.first_name, d.last_name].filter(Boolean).join(" "))}</b>${d.email ? `<br><span class="muted" style="font-size:.8rem">${esc(d.email)}</span>` : ""}</td>${church}
       <td style="max-width:240px">${esc(d.address)}</td><td>${esc(d.postcode)}</td><td>${nice(d.declared_at.slice(0, 10))}</td>
       <td>${GA_SRC[d.source] || d.source}${d.paper_ref ? `<br><span class="muted" style="font-size:.8rem">${esc(d.paper_ref)}</span>` : ""}</td>
       <td>${d.cancelled_at ? `<span class="pill" title="${esc(d.cancel_note || "")}">Cancelled ${nice(d.cancelled_at.slice(0, 10), { day: "numeric", month: "short", year: "2-digit" })}</span>` : '<span class="pill type-first">Active</span>'}</td>
       <td>${d.cancelled_at ? "" : `<button class="btn ghost small" data-gacancel="${d.id}">Cancel</button>`}</td></tr>`;
   }).join("")}</table>` : `<p class="muted">${giftAid.length ? "No declarations match." : "No Gift Aid declarations yet."}</p>`;
 }
-["#gq", "#gStatus"].forEach((sel) => $(sel).addEventListener("input", renderGiftAid));
+["#gq", "#gStatus", "#gBranch"].forEach((sel) => $(sel).addEventListener("input", renderGiftAid));
 $("#gaTbl").addEventListener("click", (e) => {
   const c = e.target.closest("[data-gacancel]"); if (c) return gaCancel(giftAid.find((d) => d.id === c.dataset.gacancel));
 });
@@ -783,9 +799,9 @@ function houseOf(addr) {
   return (num ? num[0] : a.split(",")[0]).replace(/,\s*$/, "").slice(0, 40);
 }
 $("#csvHmrc").onclick = () => csv(`gift-aid-hmrc-${ldn()}.csv`, [["Title", "First name or initial", "Last name", "House name or number", "Postcode", "Aggregated donations", "Sponsored event", "Donation date (DD/MM/YY)", "Amount"],
-  ...giftAid.filter((d) => !d.cancelled_at).map((d) => [(d.title || "").slice(0, 4), d.first_name.slice(0, 35), d.last_name.slice(0, 35), houseOf(d.address), d.postcode, "", "", "", ""])]);
-$("#csvGa").onclick = () => csv(`gift-aid-declarations-${ldn()}.csv`, [["Title", "First name", "Last name", "Address", "Postcode", "Email", "Declared", "How", "Paper reference", "Status", "Cancelled", "Cancel note", "Copy emailed", "Wording"],
-  ...filteredGa().map((d) => [d.title, d.first_name, d.last_name, d.address, d.postcode, d.email, d.declared_at.slice(0, 10), GA_SRC[d.source], d.paper_ref, d.cancelled_at ? "Cancelled" : "Active", d.cancelled_at?.slice(0, 10), d.cancel_note, d.confirmation_sent_at ? "Yes" : "No", d.declaration_text])]);
+  ...giftAid.filter((d) => !d.cancelled_at && (!$("#gBranch").value || d.branch === $("#gBranch").value)).map((d) => [(d.title || "").slice(0, 4), d.first_name.slice(0, 35), d.last_name.slice(0, 35), houseOf(d.address), d.postcode, "", "", "", ""])]);
+$("#csvGa").onclick = () => csv(`gift-aid-declarations-${ldn()}.csv`, [["Church", "Title", "First name", "Last name", "Address", "Postcode", "Email", "Declared", "How", "Paper reference", "Status", "Cancelled", "Cancel note", "Copy emailed", "Wording"],
+  ...filteredGa().map((d) => [BRANCH[d.branch], d.title, d.first_name, d.last_name, d.address, d.postcode, d.email, d.declared_at.slice(0, 10), GA_SRC[d.source], d.paper_ref, d.cancelled_at ? "Cancelled" : "Active", d.cancelled_at?.slice(0, 10), d.cancel_note, d.confirmation_sent_at ? "Yes" : "No", d.declaration_text])]);
 
 function gaCancel(d) {
   if (!d) return;
@@ -812,7 +828,8 @@ $("#gaPaper").onclick = () => {
     <p class="muted" style="font-size:.88rem">Copy the details exactly as written, and keep the signed paper form. HMRC needs the original.</p>
     <form id="gpf" novalidate>
       <div class="row">
-        <div><label>Link to member <span class="opt">(optional)</span></label><select name="member_id"><option value="">Not linked</option>${members.slice().sort((a, b) => (a.last_name + a.first_name).localeCompare(b.last_name + b.first_name)).map((m) => `<option value="${m.id}">${esc(m.last_name)}, ${esc(m.first_name)}</option>`).join("")}</select></div>
+        <div><label>Church</label><select name="branch">${(gaScope === "all" ? ["london", "leicester"] : [gaScope]).map((b) => `<option value="${b}">${BRANCH[b]}</option>`).join("")}</select></div>
+        <div ${members.length ? "" : "hidden"}><label>Link to London member <span class="opt">(optional)</span></label><select name="member_id"><option value="">Not linked</option>${members.slice().sort((a, b) => (a.last_name + a.first_name).localeCompare(b.last_name + b.first_name)).map((m) => `<option value="${m.id}">${esc(m.last_name)}, ${esc(m.first_name)}</option>`).join("")}</select></div>
         <div><label>Title <span class="opt">(optional)</span></label><input name="title" maxlength="20"></div>
         <div><label>First name or initial</label><input name="first_name"></div>
         <div><label>Surname</label><input name="last_name"></div>
@@ -846,7 +863,7 @@ $("#gaPaper").onclick = () => {
     if (!f.both.checked) return err("Please confirm the form was completed and ticked by the donor.");
     const row = { member_id: v("member_id") || null, title: v("title") || null, first_name: v("first_name"), last_name: v("last_name"), address: v("address"), postcode: pc,
       email: v("email").toLowerCase() || null, charity_name: gaCharity(), declaration_text: gaWording(gaCharity()), declared_at: new Date(v("declared") + "T12:00:00").toISOString(),
-      source: "paper", paper_ref: v("paper_ref") || null, recorded_by: me.id };
+      source: "paper", paper_ref: v("paper_ref") || null, recorded_by: me.id, branch: f.branch.value };
     const { data, error } = await sb.from("gift_aid_declarations").insert(row).select().single();
     if (error) return err(error.message);
     giftAid.unshift(data); closeModal(); $("#gStatus").value = "active"; renderGiftAid();
@@ -1026,7 +1043,7 @@ async function renderSettings() {
     <tr data-tid="${t.id}"><td><input class="tn" value="${esc(t.name)}"></td><td><input class="tl" value="${esc(t.whatsapp_link)}" placeholder="https://chat.whatsapp.com/…"></td><td><input class="ta" type="checkbox" ${t.active ? "checked" : ""} ></td></tr>`).join("");
   const { data: staff } = await sb.from("staff").select("*").order("created_at");
   $("#staffTbl").innerHTML = `<tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr>` + (staff || []).map((s) => `
-    <tr><td>${esc(s.full_name)}</td><td>${esc(s.email)}</td><td>${s.role}</td><td>${s.user_id === me.id ? '<span class="muted">you</span>' : `<button class="btn danger small" data-rm="${s.user_id}">Remove</button>`}</td></tr>`).join("");
+    <tr><td>${esc(s.full_name)}</td><td>${esc(s.email)}</td><td>${s.role === "giftaid" ? `Gift Aid only (${s.branch ? BRANCH[s.branch] : "both churches"})` : s.role}</td><td>${s.user_id === me.id ? '<span class="muted">you</span>' : `<button class="btn danger small" data-rm="${s.user_id}">Remove</button>`}</td></tr>`).join("");
   $("#posterQr1").src = qrUrl(SNL.PUBLIC_URL + "checkin.html");
   $("#posterQr2").src = qrUrl(SNL.PUBLIC_URL);
   $("#teensLink").value = settings.teens_link || "";
@@ -1094,7 +1111,8 @@ $("#staffTbl").addEventListener("click", async (e) => {
 $("#invBtn").onclick = async () => {
   const email = $("#invEmail").value.trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { $("#invOut").innerHTML = '<div class="msg err">Enter a valid email.</div>'; return; }
-  const { data, error } = await sb.from("staff_invites").insert({ email, full_name: $("#invName").value.trim() || null, role: $("#invRole").value }).select("token").single();
+  const [invRole, invBranch] = $("#invRole").value.split(":");
+  const { data, error } = await sb.from("staff_invites").insert({ email, full_name: $("#invName").value.trim() || null, role: invRole, branch: invRole === "giftaid" ? invBranch || null : null }).select("token").single();
   if (error) { $("#invOut").innerHTML = `<div class="msg err">${esc(error.message)}</div>`; return; }
   const link = `${SNL.base()}setup.html?t=${data.token}`;
   $("#invOut").innerHTML = `<div class="msg ok">Send this link to ${esc(email)} (valid 14 days, one use):</div><div class="linkbox"><input readonly value="${esc(link)}" id="invLink"><button class="btn small" id="copyInv">Copy</button></div>`;

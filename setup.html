@@ -44,7 +44,7 @@ const m = $("#m");
 const say = (t, ok) => { m.textContent = t; m.className = "msg " + (ok ? "ok" : "err"); };
 call({ action: "check" }).then((out) => {
   if (!out.ok) { $("#info").textContent = out.error; return; }
-  $("#info").textContent = `Welcome${out.full_name ? ", " + out.full_name : ""}. You're being set up as ${out.role === "admin" ? "an admin" : "an usher"}.`;
+  $("#info").textContent = `Welcome${out.full_name ? ", " + out.full_name : ""}. You're being set up as ${out.role === "admin" ? "an admin" : out.role === "giftaid" ? "a Gift Aid administrator" : "an usher"}.`;
   $("#em").value = out.email; $("#sf").classList.remove("hidden");
 }).catch(() => { $("#info").textContent = "Couldn't check this link. Please try again."; });
 

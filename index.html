@@ -209,8 +209,9 @@
       <div class="card">
         <h3>How it works</h3>
         <ul class="muted" style="font-size:.88rem;line-height:1.6;margin:0;padding-left:18px">
-          <li>People declare online at <a id="gaLink" target="_blank" rel="noopener"></a> (no account needed, for London and Leicester) or on My Shekinah. They get an emailed copy straight away. Leicester link: <a id="gaLinkLei" target="_blank" rel="noopener"></a></li>
-          <li>Paper forms: <a id="gaPrint" target="_blank" rel="noopener">print the blank form</a>, then record each one here and <b>keep the signed paper</b>. HMRC needs the original, so the record alone isn't enough.</li>
+          <li id="gaHowLon">London: people declare at <a id="gaLink" target="_blank" rel="noopener"></a> or on My Shekinah. No account needed. Printable form: <a id="gaPrint" target="_blank" rel="noopener">London form (PDF)</a>.</li>
+          <li id="gaHowLei">Leicester: people declare at <a id="gaLinkLei" target="_blank" rel="noopener"></a>. No account needed. Printable form: <a id="gaPrintLei" target="_blank" rel="noopener">Leicester form (PDF)</a>.</li>
+          <li>Everyone gets an emailed copy straight away. For paper forms, record each one here and <b>keep the signed paper</b>. HMRC needs the original, so the record alone isn't enough.</li>
           <li>One declaration covers everything the person has given in the 4 years before it and everything they give afterwards, until they cancel.</li>
           <li><b>Export for HMRC</b> fills in name, house number and postcode for each active declaration. Add the donation dates and amounts from your giving records, then upload it in Charities Online.</li>
           <li>Never delete a declaration. If someone asks to stop, cancel it so the history is kept for HMRC.</li>
@@ -767,10 +768,12 @@ function filteredGa() {
     (!q || [d.first_name, d.last_name, `${d.first_name} ${d.last_name}`, d.postcode, d.email, d.address].some((v) => (v || "").toLowerCase().includes(q))));
 }
 function renderGiftAid() {
-  const pub = SNL.GIFTAID_URL;
-  $("#gaLink").href = pub; $("#gaLink").textContent = pub.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  $("#gaLinkLei").href = pub + "?church=leicester"; $("#gaLinkLei").textContent = pub.replace(/^https?:\/\//, "") + "?church=leicester";
-  $("#gaPrint").href = pub + "giftaid-form.pdf";
+  const short = (u) => u.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  $("#gaLink").href = SNL.PUBLIC_URL + "giftaid"; $("#gaLink").textContent = short(SNL.PUBLIC_URL + "giftaid");
+  $("#gaPrint").href = SNL.PUBLIC_URL + "giftaid-form.pdf";
+  $("#gaLinkLei").href = SNL.GIFTAID_URL; $("#gaLinkLei").textContent = short(SNL.GIFTAID_URL);
+  $("#gaPrintLei").href = SNL.GIFTAID_URL + "giftaid-form.pdf";
+  $("#gaHowLon").hidden = gaScope === "leicester"; $("#gaHowLei").hidden = gaScope === "london";
   $("#gBranch").hidden = gaScope !== "all";
   const br = $("#gBranch").value;
   const live = giftAid.filter((d) => !d.cancelled_at && (!br || d.branch === br)), month = ldn().slice(0, 7);

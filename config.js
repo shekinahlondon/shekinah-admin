@@ -6,7 +6,7 @@ window.SNL = {
   // Public addresses (members site and admin dashboard live on separate subdomains)
   PUBLIC_URL: "https://members.shekinahnationlondon.com/",
   ADMIN_URL: "https://admin.shekinahnationlondon.com/",
-  // Shared Gift Aid form for London and Leicester (no account needed)
+  // Leicester Gift Aid form (free GitHub address; London uses PUBLIC_URL + giftaid)
   GIFTAID_URL: "https://shekinahnation.github.io/giftaid/",
   // Birthdays: day + month (year optional). With no year we store 1904 (a leap year, so 29 Feb works).
   NO_YEAR: 1904,

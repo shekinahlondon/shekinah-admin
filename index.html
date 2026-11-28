@@ -784,7 +784,7 @@ function renderGiftAid() {
   $("#gaTbl").innerHTML = list.length ? `<table class="tbl"><tr><th>Name</th><th>Church</th><th>Address</th><th>Postcode</th><th>Declared</th><th>How</th><th>Status</th><th></th></tr>${list.map((d) => {
     const mem = d.member_id && members.find((x) => x.id === d.member_id);
     const church = `<td>${BRANCH[d.branch] || ""}</td>`;
-    return `<tr><td${mem ? ` class="click-cell" data-open="${mem.id}"` : ""}><b>${esc([d.title, d.first_name, d.last_name].filter(Boolean).join(" "))}</b>${d.email ? `<br><span class="muted" style="font-size:.8rem">${esc(d.email)}</span>` : ""}</td>${church}
+    return `<tr><td${mem ? ` class="click-cell" data-open="${mem.id}"` : ""}><b>${esc([d.title, d.first_name, d.last_name].filter(Boolean).join(" "))}</b>${d.email || d.phone ? `<br><span class="muted" style="font-size:.8rem">${esc([d.email, d.phone].filter(Boolean).join(" · "))}</span>` : ""}</td>${church}
       <td style="max-width:240px">${esc(d.address)}</td><td>${esc(d.postcode)}</td><td>${nice(d.declared_at.slice(0, 10))}</td>
       <td>${GA_SRC[d.source] || d.source}${d.paper_ref ? `<br><span class="muted" style="font-size:.8rem">${esc(d.paper_ref)}</span>` : ""}</td>
       <td>${d.cancelled_at ? `<span class="pill" title="${esc(d.cancel_note || "")}">Cancelled ${nice(d.cancelled_at.slice(0, 10), { day: "numeric", month: "short", year: "2-digit" })}</span>` : '<span class="pill type-first">Active</span>'}</td>
@@ -803,8 +803,8 @@ function houseOf(addr) {
 }
 $("#csvHmrc").onclick = () => csv(`gift-aid-hmrc-${ldn()}.csv`, [["Title", "First name or initial", "Last name", "House name or number", "Postcode", "Aggregated donations", "Sponsored event", "Donation date (DD/MM/YY)", "Amount"],
   ...giftAid.filter((d) => !d.cancelled_at && (!$("#gBranch").value || d.branch === $("#gBranch").value)).map((d) => [(d.title || "").slice(0, 4), d.first_name.slice(0, 35), d.last_name.slice(0, 35), houseOf(d.address), d.postcode, "", "", "", ""])]);
-$("#csvGa").onclick = () => csv(`gift-aid-declarations-${ldn()}.csv`, [["Church", "Title", "First name", "Last name", "Address", "Postcode", "Email", "Declared", "How", "Paper reference", "Status", "Cancelled", "Cancel note", "Copy emailed", "Wording"],
-  ...filteredGa().map((d) => [BRANCH[d.branch], d.title, d.first_name, d.last_name, d.address, d.postcode, d.email, d.declared_at.slice(0, 10), GA_SRC[d.source], d.paper_ref, d.cancelled_at ? "Cancelled" : "Active", d.cancelled_at?.slice(0, 10), d.cancel_note, d.confirmation_sent_at ? "Yes" : "No", d.declaration_text])]);
+$("#csvGa").onclick = () => csv(`gift-aid-declarations-${ldn()}.csv`, [["Church", "Title", "First name", "Last name", "Address", "Postcode", "Email", "Phone", "Declared", "How", "Paper reference", "Status", "Cancelled", "Cancel note", "Copy emailed", "Wording"],
+  ...filteredGa().map((d) => [BRANCH[d.branch], d.title, d.first_name, d.last_name, d.address, d.postcode, d.email, d.phone, d.declared_at.slice(0, 10), GA_SRC[d.source], d.paper_ref, d.cancelled_at ? "Cancelled" : "Active", d.cancelled_at?.slice(0, 10), d.cancel_note, d.confirmation_sent_at ? "Yes" : "No", d.declaration_text])]);
 
 function gaCancel(d) {
   if (!d) return;
@@ -828,7 +828,7 @@ function gaCancel(d) {
 
 $("#gaPaper").onclick = () => {
   $("#modalBox").innerHTML = `<div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><h2 style="margin:0">Record a paper Gift Aid form</h2><button class="btn ghost small" id="gpClose">Close</button></div>
-    <p class="muted" style="font-size:.88rem">Copy the details exactly as written, and keep the signed paper form. HMRC needs the original.</p>
+    <p class="muted" style="font-size:.88rem">Copy the details exactly as written, and keep the signed paper form. HMRC needs the original. If the form is missing an email or phone number you can still save it, because the Gift Aid is still valid.</p>
     <form id="gpf" novalidate>
       <div class="row">
         <div><label>Church</label><select name="branch">${(gaScope === "all" ? ["london", "leicester"] : [gaScope]).map((b) => `<option value="${b}">${BRANCH[b]}</option>`).join("")}</select></div>
@@ -841,7 +841,8 @@ $("#gaPaper").onclick = () => {
       <div class="row">
         <div><label>Postcode</label><input name="postcode"></div>
         <div><label>Date on the form</label><input type="date" name="declared" value="${ldn()}"></div>
-        <div><label>Email <span class="opt">(optional)</span></label><input type="email" name="email"></div>
+        <div><label>Email</label><input type="email" name="email"></div>
+        <div><label>Phone number</label><input type="tel" name="phone"></div>
         <div><label>Where the paper is kept</label><input name="paper_ref" placeholder="e.g. Gift Aid folder 2026"></div>
       </div>
       <label class="check" style="margin-top:14px"><input type="checkbox" name="both"><span>The donor ticked the Gift Aid box on the form, and the form includes the UK taxpayer statement</span></label>
@@ -853,7 +854,7 @@ $("#gaPaper").onclick = () => {
   const f = $("#gpf");
   f.member_id.onchange = () => { const m = members.find((x) => x.id === f.member_id.value); if (!m) return;
     if (!f.first_name.value) f.first_name.value = m.first_name || ""; if (!f.last_name.value) f.last_name.value = m.last_name || "";
-    if (!f.address.value) f.address.value = m.address || ""; if (!f.postcode.value) f.postcode.value = m.postcode || ""; if (!f.email.value) f.email.value = m.email || ""; };
+    if (!f.address.value) f.address.value = m.address || ""; if (!f.postcode.value) f.postcode.value = m.postcode || ""; if (!f.email.value) f.email.value = m.email || ""; if (!f.phone.value) f.phone.value = m.phone || ""; };
   f.onsubmit = async (e) => {
     e.preventDefault();
     const v = (k) => (f[k].value || "").trim(), err = (t) => ($("#gpMsg").innerHTML = `<div class="msg err">${esc(t)}</div>`);
@@ -865,7 +866,7 @@ $("#gaPaper").onclick = () => {
     if (!v("declared") || v("declared") > ldn()) return err("Please enter the date on the form.");
     if (!f.both.checked) return err("Please confirm the form was completed and ticked by the donor.");
     const row = { member_id: v("member_id") || null, title: v("title") || null, first_name: v("first_name"), last_name: v("last_name"), address: v("address"), postcode: pc,
-      email: v("email").toLowerCase() || null, charity_name: gaCharity(), declaration_text: gaWording(gaCharity()), declared_at: new Date(v("declared") + "T12:00:00").toISOString(),
+      email: v("email").toLowerCase() || null, phone: v("phone") || null, charity_name: gaCharity(), declaration_text: gaWording(gaCharity()), declared_at: new Date(v("declared") + "T12:00:00").toISOString(),
       source: "paper", paper_ref: v("paper_ref") || null, recorded_by: me.id, branch: f.branch.value };
     const { data, error } = await sb.from("gift_aid_declarations").insert(row).select().single();
     if (error) return err(error.message);

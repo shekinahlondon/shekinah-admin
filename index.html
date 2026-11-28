@@ -194,6 +194,29 @@
       <p class="muted" style="font-size:.84rem">Children's details and safety notes are visible to admins only. Parents add and update children on My Shekinah, or you can do it from the parent's record.</p>
     </section>
 
+    <!-- GIFT AID -->
+    <section data-tab="giftaid" class="hidden">
+      <div class="toolbar">
+        <input id="gq" placeholder="Search name, postcode, email…">
+        <select id="gStatus"><option value="active">Active</option><option value="cancelled">Cancelled</option><option value="">All</option></select>
+        <button class="btn ghost small" id="csvHmrc" title="Columns match the HMRC Charities Online donations schedule">Export for HMRC</button>
+        <button class="btn ghost small" id="csvGa">Export all</button>
+        <button class="btn small" id="gaPaper">+ Record a paper form</button>
+      </div>
+      <div class="grid4" id="gaStats"></div>
+      <div class="card" style="margin-top:16px"><div class="scroll" id="gaTbl"></div></div>
+      <div class="card">
+        <h3>How it works</h3>
+        <ul class="muted" style="font-size:.88rem;line-height:1.6;margin:0;padding-left:18px">
+          <li>People declare online at <a id="gaLink" target="_blank" rel="noopener"></a>, or on My Shekinah. They get an emailed copy straight away.</li>
+          <li>Paper forms: <a id="gaPrint" target="_blank" rel="noopener">print the blank form</a>, then record each one here and <b>keep the signed paper</b>. HMRC needs the original, so the record alone isn't enough.</li>
+          <li>One declaration covers everything the person has given in the 4 years before it and everything they give afterwards, until they cancel.</li>
+          <li><b>Export for HMRC</b> fills in name, house number and postcode for each active declaration. Add the donation dates and amounts from your giving records, then upload it in Charities Online.</li>
+          <li>Never delete a declaration. If someone asks to stop, cancel it so the history is kept for HMRC.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- FOLLOW-UP -->
     <section data-tab="followup" class="hidden">
       <div class="toolbar">
@@ -329,6 +352,7 @@ function csv(name, rows) {
 }
 const qrUrl = (text) => { const q = qrcode(0, "M"); q.addData(text); q.make(); return q.createDataURL(8, 2); };
 
+let giftAid = [];
 let role = null, me = null, members = [], teams = [], attendance = [], followups = [], children = [], photoUrls = {}, settings = {};
 
 // ===== AUTH =====
@@ -348,7 +372,7 @@ async function boot() {
   role = r; me = session.user;
   $("#loginView").classList.add("hidden"); $("#appView").classList.remove("hidden");
   $("#whoName").textContent = `${me.email} · ${role}`;
-  const tabs = role === "admin" ? [["home", "Home"], ["scan", "Scan"], ["members", "Members"], ["children", "Children"], ["attendance", "Attendance"], ["followup", "Follow-up"], ["settings", "Settings"]] : [["scan", "Scan"]];
+  const tabs = role === "admin" ? [["home", "Home"], ["scan", "Scan"], ["members", "Members"], ["children", "Children"], ["giftaid", "Gift Aid"], ["attendance", "Attendance"], ["followup", "Follow-up"], ["settings", "Settings"]] : [["scan", "Scan"]];
   $("#tabs").innerHTML = tabs.map(([k, l]) => `<button data-k="${k}">${l}</button>`).join("");
   $("#tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) go(b.dataset.k); };
   if (role === "admin") {
@@ -366,19 +390,21 @@ function go(k) {
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.k === k));
   history.replaceState(null, "", "#" + k);
   if (k !== "scan") stopCam();
-  ({ home: renderHome, members: renderMembers, attendance: renderAttendance, followup: renderFollowup, children: renderChildren, settings: renderSettings }[k] || (() => {}))();
+  ({ home: renderHome, members: renderMembers, attendance: renderAttendance, followup: renderFollowup, children: renderChildren, giftaid: renderGiftAid, settings: renderSettings }[k] || (() => {}))();
 }
 
 async function loadAll() {
   const since = addDays(ldn(), -400);
-  const [m, t, a, s, f, c] = await Promise.all([
+  const [m, t, a, s, f, c, g] = await Promise.all([
     sb.from("members").select("*").order("created_at", { ascending: false }),
     sb.from("teams").select("*").order("sort_order"),
     sb.from("attendance").select("member_id,service_date,checked_in_at,method").gte("service_date", since).order("checked_in_at"),
     sb.from("settings").select("*"),
     sb.from("followups").select("member_id,kind,service_date,status,sent_at").gte("sent_at", since),
     sb.from("children").select("*").order("date_of_birth"),
+    sb.from("gift_aid_declarations").select("*").order("declared_at", { ascending: false }),
   ]);
+  giftAid = g.data || [];
   members = m.data || []; teams = t.data || []; attendance = a.data || []; followups = f.data || []; children = c.data || [];
   settings = Object.fromEntries((s.data || []).map((r) => [r.key, r.value]));
   const paths = members.map((x) => x.photo_path).filter((p) => p && !photoUrls[p]);
@@ -714,6 +740,119 @@ document.addEventListener("click", (e) => {
   shareCard(bd.card_path, fillName(settings.birthday_caption, bd.first_name), bd.first_name, b);
 });
 
+// ===== GIFT AID =====
+const GA_SRC = { online: "Online", my_shekinah: "My Shekinah", paper: "Paper" };
+const gaWording = (charity) => `I want to Gift Aid any donations I make in the future or have made in the past 4 years to ${charity}. I am a UK taxpayer and understand that if I pay less Income Tax and/or Capital Gains Tax than the amount of Gift Aid claimed on all my donations in that tax year it is my responsibility to pay any difference.`;
+const gaCharity = () => settings.gift_aid_charity || "Shekinah Nation";
+function gaLine(m) {
+  const d = giftAid.find((x) => x.member_id === m.id && !x.cancelled_at);
+  return `<p class="muted" style="font-size:.88rem;margin-top:14px"><b>Gift Aid:</b> ${d ? `on since ${nice(d.declared_at.slice(0, 10))} (${GA_SRC[d.source]})` : "no declaration"} · <a href="#giftaid" data-gotab="giftaid">Gift Aid tab</a></p>`;
+}
+document.addEventListener("click", (e) => { const a = e.target.closest("[data-gotab]"); if (a) { e.preventDefault(); closeModal(); go(a.dataset.gotab); } });
+function filteredGa() {
+  const q = $("#gq").value.trim().toLowerCase(), st = $("#gStatus").value;
+  return giftAid.filter((d) => (st === "active" ? !d.cancelled_at : st === "cancelled" ? !!d.cancelled_at : true) &&
+    (!q || [d.first_name, d.last_name, `${d.first_name} ${d.last_name}`, d.postcode, d.email, d.address].some((v) => (v || "").toLowerCase().includes(q))));
+}
+function renderGiftAid() {
+  const pub = SNL.PUBLIC_URL || "https://members.shekinahnationlondon.com/";
+  $("#gaLink").href = pub + "giftaid"; $("#gaLink").textContent = pub.replace(/^https?:\/\//, "") + "giftaid";
+  $("#gaPrint").href = pub + "giftaid-form.pdf";
+  const live = giftAid.filter((d) => !d.cancelled_at), month = ldn().slice(0, 7);
+  $("#gaStats").innerHTML = [[live.length, "Active declarations"], [live.filter((d) => d.declared_at.slice(0, 7) === month).length, "Added this month"],
+    [live.filter((d) => d.source === "paper").length, "Paper forms"], [giftAid.length - live.length, "Cancelled"]]
+    .map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+  const list = filteredGa();
+  $("#gaTbl").innerHTML = list.length ? `<table class="tbl"><tr><th>Name</th><th>Address</th><th>Postcode</th><th>Declared</th><th>How</th><th>Status</th><th></th></tr>${list.map((d) => {
+    const mem = d.member_id && members.find((x) => x.id === d.member_id);
+    return `<tr><td${mem ? ` class="click-cell" data-open="${mem.id}"` : ""}><b>${esc([d.title, d.first_name, d.last_name].filter(Boolean).join(" "))}</b>${d.email ? `<br><span class="muted" style="font-size:.8rem">${esc(d.email)}</span>` : ""}</td>
+      <td style="max-width:240px">${esc(d.address)}</td><td>${esc(d.postcode)}</td><td>${nice(d.declared_at.slice(0, 10))}</td>
+      <td>${GA_SRC[d.source] || d.source}${d.paper_ref ? `<br><span class="muted" style="font-size:.8rem">${esc(d.paper_ref)}</span>` : ""}</td>
+      <td>${d.cancelled_at ? `<span class="pill" title="${esc(d.cancel_note || "")}">Cancelled ${nice(d.cancelled_at.slice(0, 10), { day: "numeric", month: "short", year: "2-digit" })}</span>` : '<span class="pill type-first">Active</span>'}</td>
+      <td>${d.cancelled_at ? "" : `<button class="btn ghost small" data-gacancel="${d.id}">Cancel</button>`}</td></tr>`;
+  }).join("")}</table>` : `<p class="muted">${giftAid.length ? "No declarations match." : "No Gift Aid declarations yet."}</p>`;
+}
+["#gq", "#gStatus"].forEach((sel) => $(sel).addEventListener("input", renderGiftAid));
+$("#gaTbl").addEventListener("click", (e) => {
+  const c = e.target.closest("[data-gacancel]"); if (c) return gaCancel(giftAid.find((d) => d.id === c.dataset.gacancel));
+});
+// HMRC Charities Online schedule: house name or number is the first part of the address
+function houseOf(addr) {
+  const a = String(addr || "").trim();
+  const num = a.match(/^((?:flat|apartment|apt|unit)\s+\w+,?\s*)?\d+[A-Za-z]?(?:-\d+[A-Za-z]?)?/i);
+  return (num ? num[0] : a.split(",")[0]).replace(/,\s*$/, "").slice(0, 40);
+}
+$("#csvHmrc").onclick = () => csv(`gift-aid-hmrc-${ldn()}.csv`, [["Title", "First name or initial", "Last name", "House name or number", "Postcode", "Aggregated donations", "Sponsored event", "Donation date (DD/MM/YY)", "Amount"],
+  ...giftAid.filter((d) => !d.cancelled_at).map((d) => [(d.title || "").slice(0, 4), d.first_name.slice(0, 35), d.last_name.slice(0, 35), houseOf(d.address), d.postcode, "", "", "", ""])]);
+$("#csvGa").onclick = () => csv(`gift-aid-declarations-${ldn()}.csv`, [["Title", "First name", "Last name", "Address", "Postcode", "Email", "Declared", "How", "Paper reference", "Status", "Cancelled", "Cancel note", "Copy emailed", "Wording"],
+  ...filteredGa().map((d) => [d.title, d.first_name, d.last_name, d.address, d.postcode, d.email, d.declared_at.slice(0, 10), GA_SRC[d.source], d.paper_ref, d.cancelled_at ? "Cancelled" : "Active", d.cancelled_at?.slice(0, 10), d.cancel_note, d.confirmation_sent_at ? "Yes" : "No", d.declaration_text])]);
+
+function gaCancel(d) {
+  if (!d) return;
+  $("#modalBox").innerHTML = `<h2 style="margin-top:0">Cancel Gift Aid for ${esc(d.first_name)} ${esc(d.last_name)}?</h2>
+    <p class="muted">Gift Aid won't be claimed on anything they give from the date below. Gifts before it still count. The record is kept for HMRC.</p>
+    <form id="gcf" novalidate><div class="row"><div><label>Cancelled from</label><input type="date" name="when" value="${ldn()}"></div></div>
+    <label>Note</label><input name="note" placeholder="e.g. Told the welcome team they no longer pay UK tax">
+    <div id="gcMsg"></div>
+    <div style="display:flex;gap:10px;margin-top:14px"><button class="btn danger small">Cancel declaration</button><button type="button" class="btn ghost small" id="gcBack">Keep it</button></div></form>`;
+  $("#modal").classList.remove("hidden");
+  $("#gcBack").onclick = closeModal;
+  $("#gcf").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const { error } = await sb.from("gift_aid_declarations").update({ cancelled_at: new Date(f.get("when") + "T12:00:00").toISOString(), cancel_note: (f.get("note") || "").trim() || "Cancelled by admin" }).eq("id", d.id);
+    if (error) { $("#gcMsg").innerHTML = `<div class="msg err">${esc(error.message)}</div>`; return; }
+    Object.assign(d, { cancelled_at: new Date(f.get("when") + "T12:00:00").toISOString(), cancel_note: f.get("note") });
+    closeModal(); renderGiftAid();
+  };
+}
+
+$("#gaPaper").onclick = () => {
+  $("#modalBox").innerHTML = `<div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><h2 style="margin:0">Record a paper Gift Aid form</h2><button class="btn ghost small" id="gpClose">Close</button></div>
+    <p class="muted" style="font-size:.88rem">Copy the details exactly as written, and keep the signed paper form. HMRC needs the original.</p>
+    <form id="gpf" novalidate>
+      <div class="row">
+        <div><label>Link to member <span class="opt">(optional)</span></label><select name="member_id"><option value="">Not linked</option>${members.slice().sort((a, b) => (a.last_name + a.first_name).localeCompare(b.last_name + b.first_name)).map((m) => `<option value="${m.id}">${esc(m.last_name)}, ${esc(m.first_name)}</option>`).join("")}</select></div>
+        <div><label>Title <span class="opt">(optional)</span></label><input name="title" maxlength="20"></div>
+        <div><label>First name or initial</label><input name="first_name"></div>
+        <div><label>Surname</label><input name="last_name"></div>
+      </div>
+      <label>Full home address</label><input name="address" placeholder="e.g. 12 Rye Lane, London">
+      <div class="row">
+        <div><label>Postcode</label><input name="postcode"></div>
+        <div><label>Date on the form</label><input type="date" name="declared" value="${ldn()}"></div>
+        <div><label>Email <span class="opt">(optional)</span></label><input type="email" name="email"></div>
+        <div><label>Where the paper is kept</label><input name="paper_ref" placeholder="e.g. Gift Aid folder 2026"></div>
+      </div>
+      <label class="check" style="margin-top:14px"><input type="checkbox" name="both"><span>The donor ticked the Gift Aid box on the form, and the form includes the UK taxpayer statement</span></label>
+      <div id="gpMsg"></div>
+      <div style="margin-top:14px"><button class="btn small">Save declaration</button></div>
+    </form>`;
+  $("#modal").classList.remove("hidden");
+  $("#gpClose").onclick = closeModal;
+  const f = $("#gpf");
+  f.member_id.onchange = () => { const m = members.find((x) => x.id === f.member_id.value); if (!m) return;
+    if (!f.first_name.value) f.first_name.value = m.first_name || ""; if (!f.last_name.value) f.last_name.value = m.last_name || "";
+    if (!f.address.value) f.address.value = m.address || ""; if (!f.postcode.value) f.postcode.value = m.postcode || ""; if (!f.email.value) f.email.value = m.email || ""; };
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const v = (k) => (f[k].value || "").trim(), err = (t) => ($("#gpMsg").innerHTML = `<div class="msg err">${esc(t)}</div>`);
+    const pc = v("postcode").toUpperCase().replace(/\s+/g, "").replace(/^(.+)(\d[A-Z]{2})$/, "$1 $2");
+    if (!v("first_name") || !v("last_name")) return err("Please enter the first name and surname.");
+    if (/&|\band\b/i.test(v("first_name"))) return err("One person per declaration. Joint names can't be used for Gift Aid.");
+    if (v("address").length < 3) return err("Please enter the home address.");
+    if (!/^[A-Z]{1,2}\d[A-Z\d]? \d[A-Z]{2}$/.test(pc)) return err("Please enter a valid UK postcode.");
+    if (!v("declared") || v("declared") > ldn()) return err("Please enter the date on the form.");
+    if (!f.both.checked) return err("Please confirm the form was completed and ticked by the donor.");
+    const row = { member_id: v("member_id") || null, title: v("title") || null, first_name: v("first_name"), last_name: v("last_name"), address: v("address"), postcode: pc,
+      email: v("email").toLowerCase() || null, charity_name: gaCharity(), declaration_text: gaWording(gaCharity()), declared_at: new Date(v("declared") + "T12:00:00").toISOString(),
+      source: "paper", paper_ref: v("paper_ref") || null, recorded_by: me.id };
+    const { data, error } = await sb.from("gift_aid_declarations").insert(row).select().single();
+    if (error) return err(error.message);
+    giftAid.unshift(data); closeModal(); $("#gStatus").value = "active"; renderGiftAid();
+  };
+};
+
 function closeModal() { $("#modal").classList.add("hidden"); }
 $("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
 
@@ -759,6 +898,7 @@ function openMember(id) {
     </form>
     <div id="mQrBox" class="center hidden"><div class="qrbox"><img src="${qrUrl("SNL-" + m.member_code)}" alt=""></div></div>
     <div id="mCardBox" class="center hidden" style="margin-top:14px"></div>
+    ${gaLine(m)}
     <h3 style="margin-top:22px">Family</h3>
     <div id="mKids"></div>
     <p style="margin:8px 0 0"><button type="button" class="btn ghost small" id="mAddKid">+ Add a child</button></p>
